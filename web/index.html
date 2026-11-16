@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Developer Toolbox</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1 data-i18n="title">Developer Toolbox</h1>
+  <div class="hdr">
+    <button id="themeBtn" class="ghost" type="button"></button>
+    <button id="langBtn" class="ghost" type="button">中文</button>
+  </div>
+</header>
+
+<nav id="nav">
+  <button type="button" data-tool="ts" data-i18n="tool.ts">Timestamp</button>
+  <button type="button" data-tool="password" data-i18n="tool.password">Password</button>
+  <button type="button" data-tool="json" data-i18n="tool.json">JSON</button>
+  <button type="button" data-tool="ids" data-i18n="tool.ids">IDs</button>
+  <button type="button" data-tool="base64" data-i18n="tool.base64">Base64</button>
+  <button type="button" data-tool="url" data-i18n="tool.url">URL</button>
+  <button type="button" data-tool="unicode" data-i18n="tool.unicode">Unicode</button>
+  <button type="button" data-tool="jwt" data-i18n="tool.jwt">JWT</button>
+  <button type="button" data-tool="cron" data-i18n="tool.cron">Cron</button>
+  <button type="button" data-tool="hash" data-i18n="tool.hash">Hash</button>
+</nav>
+
+<main>
+  <!-- timestamp -->
+  <section class="panel" id="panel-ts">
+    <label class="lbl" for="tsInput" data-i18n="ts.input">Timestamp or date</label>
+    <div class="row">
+      <input id="tsInput" type="text" data-i18n-ph="ts.ph" placeholder="1700000000 / 1700000000000 / 2026-01-01 00:00:00">
+      <button id="tsNow" class="ghost" type="button" data-i18n="now">Now</button>
+      <button id="tsRun" type="button" data-i18n="convert">Convert</button>
+    </div>
+    <div class="hint" id="tsUnit"></div>
+    <div class="error" id="tsErr"></div>
+    <div class="kv"><span data-i18n="ts.local">Local</span><code id="tsLocal"></code><button class="copy" type="button" data-copy="tsLocal" data-i18n="copy">Copy</button></div>
+    <div class="kv"><span data-i18n="ts.utc">UTC</span><code id="tsUtc"></code><button class="copy" type="button" data-copy="tsUtc" data-i18n="copy">Copy</button></div>
+    <div class="kv"><span>ISO 8601</span><code id="tsIso"></code><button class="copy" type="button" data-copy="tsIso" data-i18n="copy">Copy</button></div>
+    <div class="kv"><span data-i18n="ts.seconds">Seconds</span><code id="tsSec"></code><button class="copy" type="button" data-copy="tsSec" data-i18n="copy">Copy</button></div>
+    <div class="kv"><span data-i18n="ts.milliseconds">Milliseconds</span><code id="tsMs"></code><button class="copy" type="button" data-copy="tsMs" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- password -->
+  <section class="panel" id="panel-password" hidden>
+    <div class="row">
+      <label class="lbl inline" for="pwLen" data-i18n="pw.length">Length</label>
+      <input id="pwLen" type="number" min="4" max="256" value="16">
+      <button id="pwRun" type="button" data-i18n="generate">Generate</button>
+    </div>
+    <div class="checks">
+      <label><input id="pwLower" type="checkbox" checked> a-z</label>
+      <label><input id="pwUpper" type="checkbox" checked> A-Z</label>
+      <label><input id="pwDigits" type="checkbox" checked> 0-9</label>
+      <label><input id="pwSymbols" type="checkbox"> !@#$</label>
+      <label><input id="pwAmb" type="checkbox"> <span data-i18n="pw.ambiguous">No look-alikes (Il1O0o)</span></label>
+    </div>
+    <div class="error" id="pwErr"></div>
+    <textarea id="pwOut" rows="3" readonly spellcheck="false"></textarea>
+    <div class="row between">
+      <span class="hint" id="pwEntropy"></span>
+      <button class="copy" type="button" data-copy="pwOut" data-i18n="copy">Copy</button>
+    </div>
+  </section>
+
+  <!-- json -->
+  <section class="panel" id="panel-json" hidden>
+    <textarea id="jsonInput" rows="8" spellcheck="false" data-i18n-ph="json.ph" placeholder='{"paste":"JSON here"}'></textarea>
+    <div class="row">
+      <label class="lbl inline" for="jsonIndent" data-i18n="json.indent">Indent</label>
+      <select id="jsonIndent">
+        <option value="2" selected>2</option>
+        <option value="4">4</option>
+        <option value="tab">Tab</option>
+        <option value="0">0</option>
+      </select>
+      <label><input id="jsonSort" type="checkbox"> <span data-i18n="json.sort">Sort keys</span></label>
+      <button id="jsonFormat" type="button" data-i18n="format">Format</button>
+      <button id="jsonMinify" class="ghost" type="button" data-i18n="minify">Minify</button>
+    </div>
+    <div class="error" id="jsonErr"></div>
+    <textarea id="jsonOut" rows="10" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="jsonOut" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- ids -->
+  <section class="panel" id="panel-ids" hidden>
+    <div class="row">
+      <select id="idType">
+        <option value="uuidv4" selected>UUID v4</option>
+        <option value="uuidv7">UUID v7</option>
+        <option value="nanoid">NanoID</option>
+        <option value="snowflake">Snowflake</option>
+        <option value="objectid">ObjectId</option>
+      </select>
+      <label class="lbl inline" for="idCount" data-i18n="ids.count">Count</label>
+      <input id="idCount" type="number" min="1" max="50" value="1">
+      <button id="idRun" type="button" data-i18n="generate">Generate</button>
+    </div>
+    <div class="row" id="idSizeRow" hidden>
+      <label class="lbl inline" for="idSize" data-i18n="ids.size">NanoID length</label>
+      <input id="idSize" type="number" min="1" max="256" value="21">
+    </div>
+    <div class="row" id="idSfRow" hidden>
+      <label class="lbl inline" for="idMachine" data-i18n="ids.machine">Machine</label>
+      <input id="idMachine" type="number" min="0" max="1023" value="0">
+      <label class="lbl inline" for="idEpoch">Epoch</label>
+      <input id="idEpoch" type="text" value="1288834974657" class="wide">
+    </div>
+    <textarea id="idOut" rows="6" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="idOut" data-i18n="copy">Copy</button></div>
+    <div id="sfDecodeBox" hidden>
+      <div class="row">
+        <input id="sfInput" type="text" data-i18n-ph="ids.decodePh" placeholder="Snowflake ID to decode">
+        <button id="sfDecode" class="ghost" type="button" data-i18n="ids.decode">Decode</button>
+      </div>
+      <div class="error" id="sfErr"></div>
+      <div class="hint" id="sfOut"></div>
+    </div>
+  </section>
+
+  <!-- base64 -->
+  <section class="panel" id="panel-base64" hidden>
+    <textarea id="b64Input" rows="5" spellcheck="false" data-i18n-ph="b64.ph" placeholder="Text or Base64"></textarea>
+    <div class="row">
+      <label><input id="b64Url" type="checkbox"> URL-safe</label>
+      <label><input id="b64Pad" type="checkbox" checked> =</label>
+      <button id="b64Enc" type="button" data-i18n="encode">Encode</button>
+      <button id="b64Dec" type="button" data-i18n="decode">Decode</button>
+    </div>
+    <div class="error" id="b64Err"></div>
+    <textarea id="b64Out" rows="5" readonly spellcheck="false"></textarea>
+    <div class="hint mono" id="b64Hex"></div>
+    <div class="row end"><button class="copy" type="button" data-copy="b64Out" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- url -->
+  <section class="panel" id="panel-url" hidden>
+    <textarea id="urlInput" rows="4" spellcheck="false" data-i18n-ph="url.ph" placeholder="Text or percent-encoded URL"></textarea>
+    <div class="row">
+      <select id="urlMode">
+        <option value="component" selected>encodeURIComponent</option>
+        <option value="uri">encodeURI</option>
+        <option value="form" data-i18n="url.form">form (+ for space)</option>
+      </select>
+      <button id="urlEnc" type="button" data-i18n="encode">Encode</button>
+      <button id="urlDec" type="button" data-i18n="decode">Decode</button>
+    </div>
+    <div class="error" id="urlErr"></div>
+    <textarea id="urlOut" rows="4" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="urlOut" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- unicode -->
+  <section class="panel" id="panel-unicode" hidden>
+    <textarea id="uniInput" rows="4" spellcheck="false" data-i18n-ph="uni.ph" placeholder="Text or \uXXXX / \u{…} / &#x…; escapes"></textarea>
+    <div class="row">
+      <select id="uniStyle">
+        <option value="js" selected>\uXXXX (JS)</option>
+        <option value="es6">\u{…} (ES6)</option>
+        <option value="html">&amp;#x…; (HTML)</option>
+      </select>
+      <button id="uniEsc" type="button" data-i18n="escape">Escape</button>
+      <button id="uniUnesc" type="button" data-i18n="unescape">Unescape</button>
+    </div>
+    <div class="error" id="uniErr"></div>
+    <textarea id="uniOut" rows="4" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="uniOut" data-i18n="copy">Copy</button></div>
+    <table id="uniTable" hidden>
+      <thead><tr><th data-i18n="uni.ch">Char</th><th>CP</th><th>Dec</th><th>UTF-8</th><th>UTF-16</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- jwt -->
+  <section class="panel" id="panel-jwt" hidden>
+    <div class="lbl" data-i18n="jwt.parseSec">Parse &amp; verify</div>
+    <textarea id="jwtToken" rows="4" spellcheck="false" data-i18n-ph="jwt.ph" placeholder="header.payload.signature"></textarea>
+    <div class="row">
+      <button id="jwtParse" type="button" data-i18n="parse">Parse</button>
+      <input id="jwtSecret" type="text" data-i18n-ph="jwt.secretPh" placeholder="HMAC secret (to verify)">
+      <button id="jwtVerify" class="ghost" type="button" data-i18n="verify">Verify</button>
+    </div>
+    <div class="error" id="jwtErr"></div>
+    <div class="hint" id="jwtVerifyOut"></div>
+    <div class="hint" id="jwtAlg"></div>
+    <div class="lbl" data-i18n="jwt.header">Header</div>
+    <pre id="jwtHeader"></pre>
+    <div class="lbl" data-i18n="jwt.payload">Payload</div>
+    <pre id="jwtPayload"></pre>
+    <div id="jwtTimes"></div>
+    <div class="lbl" data-i18n="jwt.signSec">Sign (HS256 / HS384 / HS512)</div>
+    <textarea id="jwtPayloadIn" rows="4" spellcheck="false">{"sub":"1234567890","name":"Ada","iat":1700000000}</textarea>
+    <div class="row">
+      <select id="jwtSignAlg">
+        <option selected>HS256</option>
+        <option>HS384</option>
+        <option>HS512</option>
+      </select>
+      <input id="jwtSignSecret" type="text" data-i18n-ph="jwt.secretPh2" placeholder="HMAC secret">
+      <button id="jwtSign" type="button" data-i18n="sign">Sign</button>
+    </div>
+    <div class="error" id="jwtSignErr"></div>
+    <textarea id="jwtSignOut" rows="3" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="jwtSignOut" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- cron -->
+  <section class="panel" id="panel-cron" hidden>
+    <div class="row">
+      <input id="cronInput" type="text" value="*/5 * * * *" class="wide mono">
+      <button id="cronRun" type="button" data-i18n="preview">Preview</button>
+    </div>
+    <div class="hint" data-i18n="cron.hint">5 fields: min hour day month weekday — or 6 with seconds first</div>
+    <div class="error" id="cronErr"></div>
+    <div class="hint strong" id="cronDesc"></div>
+    <div class="lbl" data-i18n="cron.next">Next runs (local time)</div>
+    <ol id="cronRuns" class="mono"></ol>
+    <div class="hint warn" id="cronTrunc" hidden data-i18n="cron.trunc">No further runs within the next 4 years</div>
+  </section>
+
+  <!-- hash -->
+  <section class="panel" id="panel-hash" hidden>
+    <textarea id="hashInput" rows="4" spellcheck="false" data-i18n-ph="hash.ph" placeholder="Text to hash (UTF-8)"></textarea>
+    <div class="row">
+      <select id="hashAlg">
+        <option>md5</option>
+        <option>sha-1</option>
+        <option selected>sha-256</option>
+        <option>sha-384</option>
+        <option>sha-512</option>
+      </select>
+      <select id="hashMode">
+        <option value="digest" selected data-i18n="hash.digest">Digest</option>
+        <option value="hmac">HMAC</option>
+      </select>
+      <button id="hashRun" type="button" data-i18n="compute">Compute</button>
+    </div>
+    <div class="row" id="hashKeyRow" hidden>
+      <input id="hashKey" type="text" data-i18n-ph="hash.keyPh" placeholder="HMAC key (UTF-8)">
+    </div>
+    <div class="error" id="hashErr"></div>
+    <textarea id="hashOut" rows="2" readonly spellcheck="false" class="mono"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="hashOut" data-i18n="copy">Copy</button></div>
+  </section>
+</main>
+
+<div id="toast" hidden></div>
+<script src="tools.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+*.key
+*.oiplugin
+/out
+.DS_Store

@@ -762,9 +762,516 @@
   }
   const cron = { parse: cronParse, next: cronNext, describe: cronDescribe };
 
+  /* ---------- regex: backtracking VM with a step budget ----------
+     The view's CSP blocks Workers and a native RegExp can backtrack
+     catastrophically on the IDE's main thread, so matching runs on an
+     explicit-stack VM that aborts after a fixed number of steps. */
+
+  const RE_STEP_BUDGET = 2000000;
+  const RE_TOTAL_BUDGET = 6000000;
+  const RE_MAX_MATCHES = 5000;
+  const RE_MAX_SUBJECT = 100000;
+  const RE_MAX_PATTERN = 1000;
+  const RE_LINES = "\n\r\u2028\u2029";
+  const revStr = (s) => Array.from(s).reverse().join("");
+  const reIsWord = (c) => /[A-Za-z0-9_]/.test(c);
+  function reFold(c, i, u) {
+    if (!i || c === undefined) return c;
+    if (u) {
+      const lo = c.toLowerCase();
+      return lo.length === 1 ? lo : c;
+    }
+    const up = c.toUpperCase();
+    if (up.length !== 1) return c;
+    if (c.charCodeAt(0) < 128 && up.charCodeAt(0) >= 128) return c;
+    return up;
+  }
+  const reCpAt = (s, pos, u) => {
+    if (!u) return s[pos];
+    const c = s.codePointAt(pos);
+    return c === undefined ? undefined : String.fromCodePoint(c);
+  };
+  const reCpStart = (s, pos, u) => {
+    if (u && pos >= 2) {
+      const a = s.charCodeAt(pos - 1), b = s.charCodeAt(pos - 2);
+      if (a >= 0xdc00 && a <= 0xdfff && b >= 0xd800 && b <= 0xdbff) return pos - 2;
+    }
+    return pos - 1;
+  };
+
+  function reParse(pattern, flags) {
+    const u = flags.includes("u");
+    const src = u ? Array.from(pattern) : pattern.split("");
+    let p = 0, slot = 0;
+    const names = {};
+    const peek = () => src[p];
+    const next = () => src[p++];
+    const err = (m) => { throw new Error(m + " at pattern offset " + p); };
+    function escape(inClass) {
+      const c = next();
+      if (c === undefined) err("trailing backslash");
+      if (c === "d" || c === "D" || c === "w" || c === "W" || c === "s" || c === "S") return { t: "set", set: c };
+      if (!inClass && (c === "b" || c === "B")) return { t: "anchor", kind: c };
+      if (c === "n") return { t: "char", c: "\n" };
+      if (c === "r") return { t: "char", c: "\r" };
+      if (c === "t") return { t: "char", c: "\t" };
+      if (c === "f") return { t: "char", c: "\f" };
+      if (c === "v") return { t: "char", c: "\v" };
+      if (c === "0") return { t: "char", c: "\0" };
+      if (c === "c") { const x = next(); if (!x || !/[A-Za-z]/.test(x)) err("bad control escape"); return { t: "char", c: String.fromCharCode(x.charCodeAt(0) % 32) }; }
+      if (c === "x") { const h = src.slice(p, p + 2).join(""); if (!/^[0-9a-fA-F]{2}$/.test(h)) err("bad \\x escape"); p += 2; return { t: "char", c: String.fromCharCode(parseInt(h, 16)) }; }
+      if (c === "u") {
+        if (u && peek() === "{") {
+          next();
+          let h = "";
+          while (peek() !== undefined && peek() !== "}") h += next();
+          if (next() !== "}" || !/^[0-9a-fA-F]{1,6}$/.test(h) || parseInt(h, 16) > 0x10ffff) err("bad \\u{…} escape");
+          return { t: "char", c: String.fromCodePoint(parseInt(h, 16)) };
+        }
+        const h = src.slice(p, p + 4).join("");
+        if (/^[0-9a-fA-F]{4}$/.test(h)) { p += 4; return { t: "char", c: String.fromCharCode(parseInt(h, 16)) }; }
+        if (u) err("bad \\u escape");
+        return { t: "char", c: "u" };
+      }
+      if (!inClass && c >= "1" && c <= "9") {
+        let n = c;
+        while (peek() !== undefined && peek() >= "0" && peek() <= "9" && +n * 10 + +peek() <= slot) n += next();
+        if (+n <= slot) return { t: "backref", ref: +n, rev: false };
+        if (/^[0-7]+$/.test(n)) return { t: "char", c: String.fromCharCode(parseInt(n, 8) & 0xff) };
+        return { t: "char", c: n[0] };
+      }
+      if (!inClass && c === "k") {
+        if (peek() !== "<") err("bad \\k escape");
+        next();
+        let name = "";
+        while (peek() !== undefined && peek() !== ">") name += next();
+        if (next() !== ">" || !name) err("bad named backreference");
+        return { t: "backref", ref: name, rev: false };
+      }
+      if (inClass && c === "b") return { t: "char", c: "\b" };
+      if (u && !"\\^$.*+?()[]{}|/".includes(c)) err("invalid identity escape \\" + c);
+      return { t: "char", c };
+    }
+    function klass() {
+      const neg = peek() === "^";
+      if (neg) next();
+      const items = [];
+      while (peek() !== undefined && peek() !== "]") {
+        let lo;
+        if (peek() === "\\") { next(); lo = escape(true); }
+        else lo = { t: "char", c: next() };
+        if (lo.t === "char" && peek() === "-" && src[p + 1] !== undefined && src[p + 1] !== "]") {
+          next();
+          let hi;
+          if (peek() === "\\") { next(); hi = escape(true); }
+          else hi = { t: "char", c: next() };
+          if (hi.t !== "char") err("invalid class range");
+          if (lo.c.codePointAt(0) > hi.c.codePointAt(0)) err("class range out of order");
+          items.push({ lo: lo.c, hi: hi.c });
+        } else items.push(lo);
+      }
+      if (next() !== "]") err("unterminated character class");
+      return { t: "class", neg, items };
+    }
+    function atom() {
+      const c = peek();
+      if (c === undefined) err("unexpected end of pattern");
+      if (c === "(") {
+        next();
+        if (peek() === "?") {
+          next();
+          const k = peek();
+          if (k === ":") { next(); const x = alt(); close(); return { t: "group", x, slot: -1 }; }
+          if (k === "=" || k === "!") { next(); const x = alt(); close(); return { t: "look", dir: 1, neg: k === "!", x }; }
+          if (k === "<") {
+            next();
+            const k2 = peek();
+            if (k2 === "=" || k2 === "!") { next(); const x = alt(); close(); return { t: "look", dir: -1, neg: k2 === "!", x }; }
+            let name = "";
+            while (peek() !== undefined && peek() !== ">") name += next();
+            if (next() !== ">" || !name || names[name] !== undefined) err("bad or duplicate group name");
+            const s = ++slot;
+            names[name] = s;
+            const x = alt(); close();
+            return { t: "group", x, slot: s, name };
+          }
+          err("unsupported group (?" + (k || ""));
+        }
+        const s = ++slot;
+        const x = alt(); close();
+        return { t: "group", x, slot: s };
+      }
+      if (c === "[") { next(); return klass(); }
+      if (c === ".") { next(); return { t: "any" }; }
+      if (c === "^" || c === "$") { next(); return { t: "anchor", kind: c }; }
+      if (c === "\\") { next(); return escape(false); }
+      if (c === ")" || c === "|" || c === "*" || c === "+" || c === "?") err("unexpected " + c);
+      next();
+      if (u && c.charCodeAt(0) >= 0xd800 && c.charCodeAt(0) <= 0xdbff && peek() !== undefined && peek().charCodeAt(0) >= 0xdc00 && peek().charCodeAt(0) <= 0xdfff) return { t: "char", c: c + next() };
+      if (u && c.charCodeAt(0) >= 0xd800 && c.charCodeAt(0) <= 0xdfff) err("lone surrogate in pattern");
+      return { t: "char", c };
+    }
+    function close() { if (next() !== ")") err("unclosed group"); }
+    function quant() {
+      let x = atom();
+      const c = peek();
+      let min = 1, max = 1;
+      if (c === "*") { next(); min = 0; max = Infinity; }
+      else if (c === "+") { next(); min = 1; max = Infinity; }
+      else if (c === "?") { next(); min = 0; max = 1; }
+      else if (c === "{") {
+        const save = p;
+        next();
+        let a = "";
+        while (peek() !== undefined && peek() >= "0" && peek() <= "9") a += next();
+        if (a && peek() === "}") { next(); min = max = +a; }
+        else if (a && peek() === ",") {
+          next();
+          let b = "";
+          while (peek() !== undefined && peek() >= "0" && peek() <= "9") b += next();
+          if (peek() === "}") { next(); min = +a; max = b ? +b : Infinity; }
+          else { p = save; return x; }
+        } else { p = save; return x; }
+        if (max < min) err("quantifier range out of order");
+      } else return x;
+      if (peek() === "+" || peek() === "?") {
+        const lazy = peek() === "?";
+        next();
+        if (peek() === "+") err("possessive quantifiers are not supported");
+        return { t: "rep", x, min, max, lazy };
+      }
+      return { t: "rep", x, min, max, lazy: false };
+    }
+    function cat() {
+      const xs = [];
+      while (peek() !== undefined && peek() !== "|" && peek() !== ")") xs.push(quant());
+      return xs.length === 1 ? xs[0] : { t: "cat", xs };
+    }
+    function alt() {
+      const xs = [cat()];
+      while (peek() === "|") { next(); xs.push(cat()); }
+      return xs.length === 1 ? xs[0] : { t: "alt", xs };
+    }
+    const ast = alt();
+    if (p !== src.length) err("unexpected " + peek());
+    return { ast, slots: slot + 1, names, u };
+  }
+
+  function reReverse(n) {
+    switch (n.t) {
+      case "cat": return { t: "cat", xs: n.xs.slice().reverse().map(reReverse) };
+      case "alt": return { t: "alt", xs: n.xs.map(reReverse) };
+      case "rep": return { t: "rep", x: reReverse(n.x), min: n.min, max: n.max, lazy: n.lazy };
+      case "group": return { t: "group", x: reReverse(n.x), slot: n.slot, name: n.name };
+      case "look": return { t: "look", dir: -n.dir, neg: n.neg, x: reReverse(n.x) };
+      case "backref": return { t: "backref", ref: n.ref, rev: !n.rev };
+      case "anchor": return n.kind === "^" ? { t: "anchor", kind: "$" } : n.kind === "$" ? { t: "anchor", kind: "^" } : n;
+      default: return n;
+    }
+  }
+
+  function reCompile(ast) {
+    const ops = [];
+    let marks = 0;
+    const emit = (op) => { ops.push(op); return ops.length - 1; };
+    function comp(n) {
+      switch (n.t) {
+        case "char": case "any": case "class": case "anchor": case "backref": return emit(n);
+        case "set": return emit(n);
+        case "cat": { for (const x of n.xs) comp(x); return -1; }
+        case "group": {
+          if (n.slot >= 0) emit({ t: "save", slot: n.slot * 2 });
+          comp(n.x);
+          if (n.slot >= 0) emit({ t: "save", slot: n.slot * 2 + 1 });
+          return -1;
+        }
+        case "alt": {
+          const jumps = [];
+          for (let i = 0; i < n.xs.length - 1; i++) {
+            const sp = emit({ t: "split", a: 0, b: 0 });
+            ops[sp].a = ops.length;
+            comp(n.xs[i]);
+            jumps.push(emit({ t: "jmp", a: 0 }));
+            ops[sp].b = ops.length;
+          }
+          comp(n.xs[n.xs.length - 1]);
+          const end = ops.length;
+          for (const j of jumps) ops[j].a = end;
+          return -1;
+        }
+        case "rep": {
+          for (let i = 0; i < n.min; i++) comp(n.x);
+          if (n.max === Infinity) {
+            const sp = emit({ t: "split", a: 0, b: 0 });
+            const id = marks++;
+            ops[sp].a = ops.length;
+            emit({ t: "mark", id });
+            comp(n.x);
+            const guard = emit({ t: "guard", id, exit: 0, next: sp });
+            ops[sp].b = ops.length;
+            ops[guard].exit = ops.length;
+            if (n.lazy) { const a = ops[sp].a; ops[sp].a = ops[sp].b; ops[sp].b = a; }
+          } else {
+            const splits = [];
+            for (let i = 0; i < n.max - n.min; i++) {
+              const sp = emit({ t: "split", a: 0, b: 0 });
+              splits.push(sp);
+              ops[sp].a = ops.length;
+              const id = marks++;
+              emit({ t: "mark", id });
+              comp(n.x);
+              const guard = emit({ t: "guard", id, exit: 0, next: 0 });
+              ops[guard].next = ops.length;
+              splits.push(guard);
+            }
+            const end = ops.length;
+            for (const idx of splits) {
+              const op = ops[idx];
+              if (op.t === "split") {
+                op.b = end;
+                if (n.lazy) { const a = op.a; op.a = op.b; op.b = a; }
+              } else op.exit = end;
+            }
+          }
+          return -1;
+        }
+        case "look": return emit({ t: "look", dir: n.dir, neg: n.neg, sub: reCompile(n.x), subRev: reCompile(reReverse(n.x)) });
+        default: throw new Error("unknown node " + n.t);
+      }
+    }
+    comp(ast);
+    emit({ t: "match" });
+    return ops;
+  }
+
+  function reRun(ops, str, start, saves, ctx, budget) {
+    const { i, u, m, s } = ctx;
+    const len = str.length;
+    const stack = [];
+    const marks = [];
+    let pc = 0, pos = start;
+    const revCache = ctx.revCache;
+    const cpEq = (a, b) => (i ? reFold(a, i, u) === reFold(b, i, u) : a === b);
+    const classHit = (op, c) => {
+      let hit = false;
+      for (const it of op.items) {
+        if (it.t === "set") {
+          const set = it.set;
+          const low = set.toLowerCase();
+          const inSet = low === "d" ? /[0-9]/.test(c) : low === "w" ? /[A-Za-z0-9_]/.test(c) : CLASS_SETS_S.has(c);
+          hit = hit || (set === low ? inSet : !inSet);
+        } else if (it.lo !== undefined) {
+          const cp = c.codePointAt(0);
+          const lo = it.lo.codePointAt(0), hi = it.hi.codePointAt(0);
+          const f = (x) => (i ? reFold(String.fromCodePoint(x), i, u).codePointAt(0) : x);
+          hit = hit || (f(cp) >= f(lo) && f(cp) <= f(hi));
+        } else hit = hit || cpEq(c, it.c);
+      }
+      return op.neg ? !hit : hit;
+    };
+    for (;;) {
+      if (++budget.steps > RE_TOTAL_BUDGET) throw { reBudget: true };
+      const op = ops[pc];
+      let ok = true;
+      switch (op.t) {
+        case "char": {
+          const c = reCpAt(str, pos, u);
+          ok = c !== undefined && cpEq(c, op.c);
+          if (ok) pos += c.length;
+          break;
+        }
+        case "any": {
+          const c = reCpAt(str, pos, u);
+          ok = c !== undefined && (s || !RE_LINES.includes(c));
+          if (ok) pos += c.length;
+          break;
+        }
+        case "class": {
+          const c = reCpAt(str, pos, u);
+          ok = c !== undefined && classHit(op, c);
+          if (ok) pos += c.length;
+          break;
+        }
+        case "set": {
+          const c = reCpAt(str, pos, u);
+          const low = op.set.toLowerCase();
+          const inSet = low === "d" ? /[0-9]/.test(c || "") : low === "w" ? /[A-Za-z0-9_]/.test(c || "") : CLASS_SETS_S.has(c || "");
+          ok = c !== undefined && (op.set === low ? inSet : !inSet);
+          if (ok) pos += c.length;
+          break;
+        }
+        case "anchor": {
+          if (op.kind === "^") ok = pos === 0 || (m && RE_LINES.includes(str[pos - 1]));
+          else if (op.kind === "$") ok = pos === len || (m && RE_LINES.includes(str[pos]));
+          else {
+            const before = pos > 0 ? reIsWord(str[reCpStart(str, pos, u)]) : false;
+            const after = pos < len ? reIsWord(reCpAt(str, pos, u)) : false;
+            ok = op.kind === "b" ? before !== after : before === after;
+          }
+          break;
+        }
+        case "save": {
+          stack.push({ undo: op.slot, old: saves[op.slot], pc: pc + 1, pos });
+          saves[op.slot] = pos;
+          pc++;
+          continue;
+        }
+        case "split": {
+          stack.push({ pc: op.b, pos, saves: saves.slice() });
+          pc = op.a;
+          continue;
+        }
+        case "jmp": pc = op.a; continue;
+        case "mark": stack.push({ mark: true, saves: saves.slice(), pos }); marks[op.id] = pos; pc++; continue;
+        case "guard": {
+          if (marks[op.id] === pos) {
+            let f;
+            do { f = stack.pop(); } while (f && !f.mark);
+            if (f) for (let k = 0; k < saves.length; k++) saves[k] = f.saves[k];
+            pc = op.exit;
+          } else pc = op.next;
+          continue;
+        }
+        case "backref": {
+          const slot = typeof op.ref === "number" ? op.ref : ctx.names[op.ref];
+          if (slot === undefined) { ok = false; break; }
+          const bs = saves[slot * 2], be = saves[slot * 2 + 1];
+          let text = bs >= 0 && be >= bs ? str.slice(bs, be) : "";
+          if (op.rev) text = revStr(text);
+          let q = pos;
+          for (const ch of text) {
+            const c = reCpAt(str, q, u);
+            if (c === undefined || !cpEq(c, ch)) { ok = false; break; }
+            q += c.length;
+          }
+          if (ok) pos = q;
+          break;
+        }
+        case "look": {
+          const copy = saves.slice();
+          let r;
+          if (op.dir === 1) r = reRun(op.sub, str, pos, copy, ctx, budget);
+          else {
+            let R = revCache.get(str);
+            if (R === undefined) { R = revStr(str); revCache.set(str, R); }
+            r = reRun(op.subRev, R, len - pos, copy, ctx, budget);
+          }
+          const success = r >= 0;
+          ok = op.neg ? !success : success;
+          if (success) {
+            if (op.dir === 1) { for (let k = 2; k < copy.length; k++) if (copy[k] >= 0) saves[k] = copy[k]; }
+            else for (let k = 2; k + 1 < copy.length; k += 2) if (copy[k] >= 0) { saves[k] = len - copy[k + 1]; saves[k + 1] = len - copy[k]; }
+          }
+          break;
+        }
+        case "match": return pos;
+        default: ok = false;
+      }
+      if (ok) { pc++; continue; }
+      let f;
+      do { f = stack.pop(); } while (f && f.mark);
+      if (!f) return -1;
+      if (f.undo !== undefined) { saves[f.undo] = f.old; pc = f.pc; pos = f.pos; }
+      else { for (let k = 0; k < saves.length; k++) saves[k] = f.saves[k]; pc = f.pc; pos = f.pos; }
+    }
+  }
+  const CLASS_SETS_S = new Set(" \t\n\r\f\v\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff");
+
+  function reExecAll(pattern, flags, subject) {
+    if (typeof pattern !== "string" || pattern.length > RE_MAX_PATTERN) throw new Error("pattern empty or longer than " + RE_MAX_PATTERN + " characters");
+    if (!/^[gimsuyd]*$/.test(flags) || new Set(flags).size !== flags.length) throw new Error("flags must be unique letters from g i m s u y d");
+    if (flags.includes("v")) throw new Error("the v (unicodeSets) flag is not supported");
+    if (subject.length > RE_MAX_SUBJECT) throw new Error("test text longer than " + RE_MAX_SUBJECT + " characters");
+    const parsed = reParse(pattern, flags);
+    const ops = reCompile(parsed.ast);
+    const ctx = { i: flags.includes("i"), u: parsed.u, m: flags.includes("m"), s: flags.includes("s"), names: parsed.names, revCache: new Map() };
+    const budget = { steps: 0 };
+    const g = flags.includes("g"), y = flags.includes("y");
+    const matches = [];
+    let from = 0, truncated = false;
+    for (;;) {
+      let end = -1, saves = null;
+      for (let start = from; start <= subject.length; start = parsed.u ? start + (reCpAt(subject, start, true) || " ").length : start + 1) {
+        const sv = new Array(parsed.slots * 2).fill(-1);
+        sv[0] = start;
+        const r = reRun(ops, subject, start, sv, ctx, budget);
+        if (r >= 0) { end = r; saves = sv; sv[1] = r; break; }
+        if (y) break;
+      }
+      if (end < 0) break;
+      const groups = [];
+      for (let k = 1; k < parsed.slots; k++) {
+        const gs = saves[k * 2], ge = saves[k * 2 + 1];
+        const name = Object.keys(parsed.names).find((n) => parsed.names[n] === k);
+        groups.push(gs >= 0 ? { name, index: gs, end: ge, text: subject.slice(gs, ge) } : { name, index: -1, end: -1, text: undefined });
+      }
+      matches.push({ index: saves[0], end, text: subject.slice(saves[0], end), groups });
+      if (matches.length >= RE_MAX_MATCHES) { truncated = true; break; }
+      if (!g && !y) break;
+      from = end === saves[0] ? (parsed.u ? end + (reCpAt(subject, end, true) || " ").length : end + 1) : end;
+      if (from > subject.length) break;
+    }
+    return { matches, truncated, steps: budget.steps };
+  }
+
+  function reExpand(repl, m, subject, hasNames) {
+    return String(repl).replace(/\$(\$|&|`|'|<[^>]*>|\d{1,2})/g, (tok, k) => {
+      if (k === "$") return "$";
+      if (k === "&") return m.text;
+      if (k === "`") return subject.slice(0, m.index);
+      if (k === "'") return subject.slice(m.end);
+      if (k[0] === "<") {
+        if (!hasNames) return tok;
+        const name = k.slice(1, -1);
+        const g = m.groups.find((x) => x.name === name);
+        return g && g.text !== undefined ? g.text : "";
+      }
+      let n = +k;
+      if (k.length === 2 && n > m.groups.length) {
+        const first = +k[0];
+        if (first >= 1 && first <= m.groups.length) {
+          const g = m.groups[first - 1];
+          return (g && g.text !== undefined ? g.text : "") + k[1];
+        }
+        return tok;
+      }
+      if (n === 0 || n > m.groups.length) return tok;
+      const g = m.groups[n - 1];
+      return g && g.text !== undefined ? g.text : "";
+    });
+  }
+
+  const regex = {
+    test: (pattern, flags, subject) => {
+      try {
+        const r = reExecAll(pattern, flags || "", String(subject));
+        return { ok: true, matches: r.matches, truncated: r.truncated, steps: r.steps };
+      } catch (e) {
+        return { ok: false, reason: e && e.reBudget ? "backtracking budget exceeded — the pattern may be catastrophic (try simplifying nested quantifiers)" : String(e.message || e) };
+      }
+    },
+    replace: (pattern, flags, subject, repl) => {
+      try {
+        const s = String(subject);
+        const r = reExecAll(pattern, flags || "", s);
+        const hasNames = r.matches.some((m) => m.groups.some((g) => g.name));
+        let out = "", last = 0, count = 0;
+        for (const m of r.matches) {
+          out += s.slice(last, m.index) + reExpand(repl, m, s, hasNames);
+          last = m.end;
+          count++;
+        }
+        out += s.slice(last);
+        return { ok: true, text: out, count, truncated: r.truncated };
+      } catch (e) {
+        return { ok: false, reason: e && e.reBudget ? "backtracking budget exceeded — the pattern may be catastrophic (try simplifying nested quantifiers)" : String(e.message || e) };
+      }
+    },
+  };
+
   /* ---------- export ---------- */
 
-  const Toolbox = { util: { hexOf, fromHex, bytesOf }, hash, base64, url, unicode, ts, password, json, ids, jwt, cron };
+  const Toolbox = { util: { hexOf, fromHex, bytesOf }, hash, base64, url, unicode, ts, password, json, ids, jwt, cron, regex };
   if (typeof module !== "undefined" && module.exports) module.exports = Toolbox;
   else root.DevToolbox = Toolbox;
 })(typeof globalThis !== "undefined" ? globalThis : this);

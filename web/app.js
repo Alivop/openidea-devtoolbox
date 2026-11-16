@@ -9,7 +9,7 @@
       title: "Developer Toolbox",
       "tool.ts": "Timestamp", "tool.password": "Password", "tool.json": "JSON", "tool.ids": "IDs",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
-      "tool.cron": "Cron", "tool.hash": "Hash",
+      "tool.cron": "Cron", "tool.hash": "Hash", "tool.regex": "Regex",
       now: "Now", convert: "Convert", copy: "Copy", generate: "Generate", format: "Format",
       minify: "Minify", encode: "Encode", decode: "Decode", escape: "Escape", unescape: "Unescape",
       parse: "Parse", verify: "Verify", sign: "Sign", preview: "Preview", compute: "Compute",
@@ -35,12 +35,16 @@
       "cron.hint": "5 fields: min hour day month weekday — or 6 with seconds first",
       "cron.next": "Next runs (local time)", "cron.trunc": "No further runs within the next 4 years",
       "hash.ph": "Text to hash (UTF-8)", "hash.digest": "Digest", "hash.keyPh": "HMAC key (UTF-8)",
+      "re.ph": "pattern", "re.subjectPh": "test text", "re.matches": "{0} matches", "re.steps": "{0} steps",
+      "re.trunc": "Match limit reached", "re.hl": "Matches", "re.index": "Index", "re.match": "Match",
+      "re.groups": "Groups", "re.replace": "Replace", "re.replacePh": "replacement ($1, $<name>, $&)",
+      "re.none": "no matches",
     },
     zh: {
       title: "开发者工具箱",
       "tool.ts": "时间戳", "tool.password": "密码", "tool.json": "JSON", "tool.ids": "ID",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
-      "tool.cron": "Cron", "tool.hash": "哈希",
+      "tool.cron": "Cron", "tool.hash": "哈希", "tool.regex": "正则",
       now: "现在", convert: "转换", copy: "复制", generate: "生成", format: "格式化",
       minify: "压缩", encode: "编码", decode: "解码", escape: "转义", unescape: "反转义",
       parse: "解析", verify: "验证", sign: "签名", preview: "预览", compute: "计算",
@@ -66,6 +70,10 @@
       "cron.hint": "5 段：分 时 日 月 周 —— 或 6 段（首段为秒）",
       "cron.next": "接下来执行（本地时间）", "cron.trunc": "未来 4 年内没有更多执行时间",
       "hash.ph": "要哈希的文本（UTF-8）", "hash.digest": "摘要", "hash.keyPh": "HMAC 密钥（UTF-8）",
+      "re.ph": "正则表达式", "re.subjectPh": "测试文本", "re.matches": "{0} 个匹配", "re.steps": "{0} 步",
+      "re.trunc": "已达匹配上限", "re.hl": "匹配高亮", "re.index": "位置", "re.match": "匹配",
+      "re.groups": "分组", "re.replace": "替换", "re.replacePh": "替换串（$1、$<name>、$&）",
+      "re.none": "无匹配",
     },
   };
   let lang = /^zh/i.test(navigator.language || "") ? "zh" : "en";
@@ -434,6 +442,62 @@
   }
   $("hashRun").addEventListener("click", hashRun);
   reruns.push(() => { if ($("hashOut").value) hashRun(); });
+
+  /* ---------- regex ---------- */
+  function reFlags() {
+    return ["reG", "reI", "reM", "reS", "reU", "reY"].filter((id) => $(id).checked).map((id) => id[2].toLowerCase()).join("");
+  }
+  function reRun() {
+    setErr("reErr", "");
+    const pattern = $("rePattern").value;
+    const flags = reFlags();
+    const subject = $("reSubject").value;
+    const hl = $("reHl");
+    const tbody = $("reTable").querySelector("tbody");
+    hl.textContent = "";
+    tbody.textContent = "";
+    $("reTable").hidden = true;
+    $("reTrunc").hidden = true;
+    if (!pattern) { $("reStats").textContent = ""; setOut("reReplOut", ""); return; }
+    const r = T.regex.test(pattern, flags, subject);
+    if (!r.ok) {
+      $("reStats").textContent = "";
+      setErr("reErr", r.reason);
+      setOut("reReplOut", "");
+      return;
+    }
+    $("reStats").textContent = r.matches.length ? t("re.matches", r.matches.length) + " · " + t("re.steps", r.steps) : t("re.none");
+    $("reTrunc").hidden = !r.truncated;
+    let at = 0;
+    r.matches.slice(0, 500).forEach((m, i) => {
+      hl.appendChild(document.createTextNode(subject.slice(at, m.index)));
+      const mark = document.createElement("mark");
+      mark.textContent = m.text;
+      mark.title = "#" + (i + 1) + " @" + m.index;
+      hl.appendChild(mark);
+      at = m.end;
+    });
+    hl.appendChild(document.createTextNode(subject.slice(at)));
+    for (const [i, m] of r.matches.slice(0, 200).entries()) {
+      const tr = document.createElement("tr");
+      const groups = m.groups.map((g, k) => (g.name || k + 1) + ": " + (g.text === undefined ? "—" : JSON.stringify(g.text))).join("  ");
+      for (const cell of [String(i + 1), m.index + "–" + m.end, JSON.stringify(m.text), groups || "—"]) {
+        const td = document.createElement("td");
+        td.textContent = cell;
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    $("reTable").hidden = r.matches.length === 0;
+    const rr = T.regex.replace(pattern, flags, subject, $("reRepl").value);
+    setOut("reReplOut", rr.ok ? rr.text : "");
+    if (!rr.ok) setErr("reErr", rr.reason);
+  }
+  let reTimer = 0;
+  const reSoon = () => { clearTimeout(reTimer); reTimer = setTimeout(reRun, 150); };
+  for (const id of ["rePattern", "reSubject", "reRepl", "reG", "reI", "reM", "reS", "reU", "reY"]) $(id).addEventListener("input", reSoon);
+  $("rePattern").addEventListener("keydown", (e) => { if (e.key === "Enter") reRun(); });
+  reruns.push(reRun);
 
   /* ---------- shell: nav, language, theme ---------- */
   const navBtns = [...document.querySelectorAll("#nav button")];

@@ -162,5 +162,99 @@ eq("cron describe zh", T.cron.describe("0 12 * * MON", "zh"), "每周一 12:00")
 eq("cron describe daily", T.cron.describe("30 8 * * *", "en"), "Daily at 08:30");
 ok("cron impossible truncates", T.cron.next("0 0 31 2 *", from, 1).truncated);
 
+/* ---------- regex engine vs native RegExp ---------- */
+const norm = (m) => ({
+  index: m.index,
+  text: m[0],
+  groups: m.slice(1).map((g) => (g === undefined ? null : g)),
+  names: m.groups ? Object.entries(m.groups).map(([k, v]) => [k, v === undefined ? null : v]) : [],
+});
+function nativeMatches(pattern, flags, s) {
+  const re = new RegExp(pattern, flags);
+  const out = [];
+  if (flags.includes("g")) {
+    for (const m of s.matchAll(re)) out.push(norm(m));
+  } else if (flags.includes("y")) {
+    re.lastIndex = 0;
+    for (;;) {
+      const m = re.exec(s);
+      if (!m) break;
+      out.push(norm(m));
+      if (m[0] === "") re.lastIndex += flags.includes("u") ? (s.codePointAt(re.lastIndex - 1) > 0xffff ? 2 : 1) : 1;
+      if (re.lastIndex > s.length) break;
+    }
+  } else {
+    const m = re.exec(s);
+    if (m) out.push(norm(m));
+  }
+  return out;
+}
+const oursNorm = (r) => r.matches.map((m) => ({
+  index: m.index,
+  text: m.text,
+  groups: m.groups.map((g) => (g.text === undefined ? null : g.text)),
+  names: m.groups.filter((g) => g.name).map((g) => [g.name, g.text === undefined ? null : g.text]),
+}));
+const CASES = [
+  ["a+", "", "baaa"], ["a*", "g", "bab"], ["(a|ab)+", "", "abab"], ["a|ab", "g", "ab"],
+  ["(a+)(b?)", "g", "aab aab"], ["(?<y>\\d{4})-(?<m>\\d{2})", "", "2026-11"],
+  ["\\b\\w+\\b", "g", "hello world_42 x"], ["^a.*b$", "m", "a1\na2b\nxx"],
+  ["a.c", "s", "a\nc"], ["[a-z]+", "i", "AbC dEf"], ["[^0-9]+", "g", "a1b22c"],
+  ["(a)(b)\\2\\1", "", "abba abab"], ["(?=(a+))a", "g", "aaa"], ["(?<=(a|ab))b", "", "ab"],
+  ["(?<=(a+))b", "", "aaab"], ["(?<!a)b", "g", "ab cb"], ["a(?=b)", "g", "ab ac"],
+  ["a(?!b)", "g", "ab ac"], ["\\u{1F600}", "u", "x😀y"], ["[\\u{1F600}-\\u{1F602}]", "u", "x😀"],
+  [".", "gu", "a😀b"], ["(?:)", "gu", "😀a"], ["ß", "iu", "ẞ"], ["K", "iu", "k"],
+  ["ß", "i", "ẞ"], ["[a-z]", "iu", "KK"], ["\\bé", "u", "xé é"],
+  ["a{2,4}", "g", "a aa aaa aaaaa"], ["a{2,4}?", "g", "aaaa"], ["a+?", "g", "aaa"],
+  ["(a+?)+", "", "aaa"], ["colou?r", "gi", "color Colour COLOUR"],
+  ["\\d+", "g", "a12b345"], ["\\S+", "g", "a b\tc"], ["[\\w-]+", "g", "ab-cd ef"],
+  ["(foo|foobar)bar", "", "foobarbar fooobar"], ["x(x?){12}y", "", "x".repeat(13) + "y"],
+  ["^$", "gm", "a\n\nb"], ["a$", "m", "a\nb"], ["\\A", "", "A"],
+  ["a|", "g", "bab"], ["(|a)", "g", "bab"], ["(a*)*", "", "aa"],
+  ["(a|a)*b", "", "aaab"], ["\\1", "", "\x01"], ["(a)\\1", "i", "aA"],
+  ["(?<n>a)\\k<n>", "", "aa"], ["a.*?c", "g", "abcabc"], ["<(.+?)>", "g", "<a><bb>"],
+  ["[\\s\\S]+", "", "a\nb"], ["a", "y", "aa"], ["a", "y", "ba"], ["a", "gy", "aab"],
+  ["a(d)?", "d", "ad"], ["", "g", "ab"], ["(?<=^)a", "m", "b\na"],
+  ["(?=(?=(a)))a", "", "a"], ["(?<=(a(?=b)))b", "", "ab"], ["(?:)*", "g", "ab"],
+  ["(a*)*", "g", "bb"], ["[]]", "", "]"], ["[^]", "g", "a\n"], ["[\\]]+", "g", "a]b]]"],
+  ["a{2}", "g", "aaa"], ["a{2,}", "g", "aaa"], ["\\x41\\u0042", "", "AB"],
+  ["[a-z][0-9]", "gi", "a1 B2 c3"], ["(?i)a", "", "a"],
+];
+for (const [p, f, s] of CASES) {
+  let want;
+  try { want = nativeMatches(p, f, s); } catch { want = "throw"; }
+  const got = T.regex.test(p, f, s);
+  if (want === "throw") { ok(`regex invalid ${p}/${f}`, !got.ok, got.reason); continue; }
+  ok(`regex match ${p}/${f}`, got.ok && JSON.stringify(oursNorm(got)) === JSON.stringify(want), got.ok ? JSON.stringify(oursNorm(got)) + " want " + JSON.stringify(want) : got.reason);
+}
+const REPL = [
+  ["(\\w+)\\s(\\w+)", "", "hello world", "$2 $1"],
+  ["a", "g", "banana", "[$&]"],
+  ["a", "g", "banana", "$$"],
+  ["(a)(b)", "", "ab", "$<x>"],
+  ["(a)(b)", "", "ab", "$<a>$<b>"],
+  ["a", "", "banana", "$`|$'"],
+  ["(a)", "g", "aa", "$1$1"],
+  ["(a)", "g", "aa", "$12"],
+  ["a", "g", "aaa", "$01"],
+  ["a", "g", "banana", "X"],
+  ["(a+)", "", "aaa", "[$1]"],
+];
+for (const [p, f, s, r] of REPL) {
+  const want = s.replace(new RegExp(p, f), r);
+  const got = T.regex.replace(p, f, s, r);
+  ok(`regex replace ${p} ${r}`, got.ok && got.text === want, got.ok ? got.text + " want " + want : got.reason);
+}
+for (const [p, f, s] of [["(a+)+$", "", "a".repeat(28) + "!"], ["(a|aa)*$", "", "a".repeat(24) + "!"], ["(x+x+)+y", "", "x".repeat(20) + "z"]]) {
+  const t0 = Date.now();
+  const got = T.regex.test(p, f, s);
+  const ms = Date.now() - t0;
+  ok(`regex bomb budget ${p}`, !got.ok && /budget/.test(got.reason) && ms < 3000, `${ms}ms ${got.reason || ""}`);
+}
+for (const [p, f] of [["(", ""], ["[z-a]", ""], ["a{2,1}", ""], ["(?<n>a)(?<n>b)", ""], ["\\p{L}", "u"], ["a", "gg"], ["a", "v"], ["a**", ""]]) {
+  ok(`regex rejects ${p}/${f}`, !T.regex.test(p, f, "a").ok);
+}
+ok("regex subject cap", !T.regex.test("a", "", "x".repeat(100001)).ok);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

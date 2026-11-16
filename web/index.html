@@ -25,6 +25,7 @@
   <button type="button" data-tool="unicode" data-i18n="tool.unicode">Unicode</button>
   <button type="button" data-tool="jwt" data-i18n="tool.jwt">JWT</button>
   <button type="button" data-tool="cron" data-i18n="tool.cron">Cron</button>
+  <button type="button" data-tool="regex" data-i18n="tool.regex">Regex</button>
   <button type="button" data-tool="hash" data-i18n="tool.hash">Hash</button>
 </nav>
 
@@ -222,6 +223,35 @@
     <div class="lbl" data-i18n="cron.next">Next runs (local time)</div>
     <ol id="cronRuns" class="mono"></ol>
     <div class="hint warn" id="cronTrunc" hidden data-i18n="cron.trunc">No further runs within the next 4 years</div>
+  </section>
+
+  <!-- regex -->
+  <section class="panel" id="panel-regex" hidden>
+    <div class="row">
+      <input id="rePattern" type="text" class="wide mono" value="(\w+)@(\w+)" data-i18n-ph="re.ph" placeholder="pattern">
+      <label><input id="reG" type="checkbox" checked> g</label>
+      <label><input id="reI" type="checkbox"> i</label>
+      <label><input id="reM" type="checkbox"> m</label>
+      <label><input id="reS" type="checkbox"> s</label>
+      <label><input id="reU" type="checkbox"> u</label>
+      <label><input id="reY" type="checkbox"> y</label>
+    </div>
+    <textarea id="reSubject" rows="6" spellcheck="false" data-i18n-ph="re.subjectPh" placeholder="test text">ada@example.com lovelace@analytical.engine</textarea>
+    <div class="error" id="reErr"></div>
+    <div class="hint" id="reStats"></div>
+    <div class="hint warn" id="reTrunc" hidden data-i18n="re.trunc">Match limit reached</div>
+    <div class="lbl" data-i18n="re.hl">Matches</div>
+    <div id="reHl" class="re-hl mono"></div>
+    <table id="reTable" hidden>
+      <thead><tr><th>#</th><th data-i18n="re.index">Index</th><th data-i18n="re.match">Match</th><th data-i18n="re.groups">Groups</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="lbl" data-i18n="re.replace">Replace</div>
+    <div class="row">
+      <input id="reRepl" type="text" class="wide mono" value="$1 at $2" data-i18n-ph="re.replacePh" placeholder="replacement ($1, $<name>, $&)">
+    </div>
+    <textarea id="reReplOut" rows="3" readonly spellcheck="false"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="reReplOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- hash -->

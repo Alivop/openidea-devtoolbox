@@ -1,97 +1,115 @@
-/* Theme: the IDE bridge sets --openidea-* on <html>; standalone browser use
-   falls back to the palette below, switched by data-theme. */
+/* Terminal-console style: the page owns its palette (paper terminal in light,
+   deep console in dark), keyed on data-theme, which the IDE bridge also sets.
+   Everything is monospace and square; read-only outputs read as terminal echo. */
 :root {
-  --tb-bg: #f5f6f8;
+  --tb-bg: #f6f8fa;
   --tb-elev: #ffffff;
-  --tb-sunken: #f1f3f6;
+  --tb-sunken: #f0f3f6;
   --tb-input: #ffffff;
-  --tb-hover: #e9ecf0;
+  --tb-hover: #eaeef2;
   --tb-fg: #1f2328;
-  --tb-muted: #667085;
-  --tb-border: #d5dae1;
-  --tb-accent: #2563eb;
+  --tb-muted: #57606a;
+  --tb-border: #d0d7de;
+  --tb-accent: #1a7f37;
+  --tb-btn: #1f883d;
+  --tb-btn-hover: #1a7f37;
   --tb-on-accent: #ffffff;
-  --tb-danger: #c62828;
-  --tb-success: #157f3d;
+  --tb-echo: #116329;
+  --tb-mark: #dafbe1;
+  --tb-danger: #cf222e;
+  --tb-success: #1a7f37;
   --tb-warning: #9a6700;
-  --tb-ui: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  --tb-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --tb-size: 13px;
+  --tb-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "PingFang SC", "Microsoft YaHei", monospace;
+  --tb-size: 12px;
+  accent-color: var(--tb-accent);
 }
 :root[data-theme="dark"] {
-  --tb-bg: #1e2126;
-  --tb-elev: #262a31;
-  --tb-sunken: #1b1e23;
-  --tb-input: #1b1e23;
-  --tb-hover: #31363f;
-  --tb-fg: #d6dae1;
-  --tb-muted: #98a2b3;
-  --tb-border: #3a404a;
-  --tb-accent: #5b8def;
+  --tb-bg: #0d1117;
+  --tb-elev: #161b22;
+  --tb-sunken: #0d1117;
+  --tb-input: #0d1117;
+  --tb-hover: #21262d;
+  --tb-fg: #e6edf3;
+  --tb-muted: #8b949e;
+  --tb-border: #30363d;
+  --tb-accent: #3fb950;
+  --tb-btn: #238636;
+  --tb-btn-hover: #2ea043;
   --tb-on-accent: #ffffff;
-  --tb-danger: #f28b82;
-  --tb-success: #81c995;
-  --tb-warning: #fdd663;
+  --tb-echo: #7ee787;
+  --tb-mark: #1f3626;
+  --tb-danger: #f85149;
+  --tb-success: #3fb950;
+  --tb-warning: #d29922;
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: var(--openidea-bg, var(--tb-bg));
-  color: var(--openidea-fg, var(--tb-fg));
-  font: var(--openidea-font-size, var(--tb-size)) / 1.5 var(--openidea-font-ui, var(--tb-ui));
-  padding: 10px;
+  background: var(--tb-bg);
+  color: var(--tb-fg);
+  font: var(--openidea-font-size, var(--tb-size)) / 1.5 var(--tb-mono);
+  padding: 8px;
 }
+::selection { background: var(--tb-accent); color: var(--tb-on-accent); }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--tb-border); }
+::-webkit-scrollbar-track { background: transparent; }
 
-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-h1 { font-size: 1.05em; margin: 0; color: var(--openidea-fg-strong, var(--tb-fg)); }
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--tb-border);
+}
+h1 { font-size: 1em; font-weight: 600; margin: 0; }
+h1::before { content: "$ "; color: var(--tb-accent); }
 .hdr { display: flex; gap: 6px; }
 
-#nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+/* Underline tabs on a shared baseline, like a terminal multiplexer's status row. */
+#nav { display: flex; flex-wrap: wrap; gap: 0 10px; margin-bottom: 10px; border-bottom: 1px solid var(--tb-border); }
 #nav button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  background: var(--openidea-bg-elevated, var(--tb-elev));
-  color: var(--openidea-fg-muted, var(--tb-muted));
-  border-radius: 999px;
-  padding: 2px 7px 2px 6px;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+  padding: 3px 1px;
+  color: var(--tb-muted);
   font: inherit;
   font-size: 0.92em;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
 #nav .ico { width: 13px; height: 13px; flex: none; }
-#nav button:hover { background: var(--openidea-bg-hover, var(--tb-hover)); color: var(--openidea-fg, var(--tb-fg)); }
-#nav button:active { transform: scale(0.96); }
-#nav button.active {
-  background: var(--openidea-accent, var(--tb-accent));
-  border-color: var(--openidea-accent, var(--tb-accent));
-  color: var(--openidea-fg-on-accent, var(--tb-on-accent));
-}
+#nav button:hover { color: var(--tb-fg); }
+#nav button.active { color: var(--tb-accent); border-bottom-color: var(--tb-accent); }
 
 .panel {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: var(--openidea-bg-elevated, var(--tb-elev));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 10px;
+  background: var(--tb-elev);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
   padding: 10px;
-  box-shadow: 0 1px 3px rgb(16 24 40 / 10%);
 }
 .panel[hidden] { display: none; }
 /* show() flips [hidden]; going display:none → flex restarts this animation,
    so switching tabs animates without any JS. */
 .panel:not([hidden]) { animation: tb-panel-in 0.16s ease-out; }
-:root[data-theme="dark"] .panel { box-shadow: 0 1px 3px rgb(0 0 0 / 30%); }
 @keyframes tb-panel-in {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: none; }
 }
 
-.lbl { color: var(--openidea-fg-muted, var(--tb-muted)); font-size: 0.92em; }
+.lbl { color: var(--tb-muted); font-size: 0.85em; text-transform: uppercase; letter-spacing: 0.05em; }
 .lbl.inline { display: inline; }
 .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .row.between { justify-content: space-between; }
@@ -100,71 +118,73 @@ h1 { font-size: 1.05em; margin: 0; color: var(--openidea-fg-strong, var(--tb-fg)
 .checks label, .row label { display: inline-flex; align-items: center; gap: 4px; }
 
 input[type="text"], input[type="number"], textarea {
-  background: var(--openidea-bg-input, var(--tb-input));
-  color: var(--openidea-fg, var(--tb-fg));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 6px;
-  padding: 5px 7px;
+  background: var(--tb-input);
+  color: var(--tb-fg);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
+  padding: 4px 6px;
   font: inherit;
   min-width: 0;
+  caret-color: var(--tb-accent);
   transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 input[type="text"] { flex: 1 1 120px; }
 input[type="text"].wide { flex: 1 1 160px; }
 input[type="number"] { width: 64px; }
-textarea { width: 100%; resize: vertical; font-family: var(--openidea-font-mono, var(--tb-mono)); font-size: 0.95em; }
-textarea[readonly] { background: var(--openidea-bg, var(--tb-sunken)); }
+textarea { width: 100%; resize: vertical; font-size: 0.95em; }
+textarea[readonly] { background: var(--tb-sunken); color: var(--tb-echo); }
+input:focus, select:focus, textarea:focus { border-color: var(--tb-accent); }
 input:focus, select:focus, textarea:focus, button:focus-visible {
-  outline: 2px solid var(--openidea-focus-ring, var(--tb-accent));
+  outline: 2px solid var(--tb-accent);
   outline-offset: 1px;
 }
-.mono, code, pre, ol.mono { font-family: var(--openidea-font-mono, var(--tb-mono)); }
 
 button {
-  background: var(--openidea-accent, var(--tb-accent));
-  color: var(--openidea-fg-on-accent, var(--tb-on-accent));
+  background: var(--tb-btn);
+  color: var(--tb-on-accent);
   border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 5px 12px;
+  border-radius: 0;
+  padding: 4px 10px;
   font: inherit;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, filter 0.15s ease, transform 0.08s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-button:hover { filter: brightness(1.08); }
+button:hover { background: var(--tb-btn-hover); }
 button:active { transform: translateY(1px); }
 button.ghost {
-  background: var(--openidea-bg-input, var(--tb-input));
-  color: var(--openidea-fg, var(--tb-fg));
-  border-color: var(--openidea-border, var(--tb-border));
+  background: var(--tb-input);
+  color: var(--tb-fg);
+  border-color: var(--tb-border);
 }
-button.ghost:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filter: none; }
-/* Native select chrome (macOS popup look) clashes with the flat buttons:
+button.ghost:hover { background: var(--tb-hover); }
+/* Native select chrome (macOS popup look) clashes with the square controls:
    draw our own chevron instead, light/dark via data-theme (the IDE sets it too). */
 select {
   -webkit-appearance: none;
   appearance: none;
-  background: var(--openidea-bg-input, var(--tb-input)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
-  color: var(--openidea-fg, var(--tb-fg));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 6px;
-  padding: 5px 24px 5px 10px;
+  background: var(--tb-input) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2357606a' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 8px center;
+  color: var(--tb-fg);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
+  padding: 4px 22px 4px 8px;
   font: inherit;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 :root[data-theme="dark"] select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2398a2b3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%238b949e' stroke-width='1.5'/%3E%3C/svg%3E");
 }
-select:hover { background-color: var(--openidea-bg-hover, var(--tb-hover)); }
-button.copy { padding: 2px 8px; font-size: 0.85em; background: var(--openidea-bg-input, var(--tb-input)); color: var(--openidea-fg-muted, var(--tb-muted)); border-color: var(--openidea-border, var(--tb-border)); }
-button.copy:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filter: none; }
+select:hover { background-color: var(--tb-hover); }
+button.copy { padding: 2px 8px; font-size: 0.85em; background: transparent; color: var(--tb-muted); border-color: var(--tb-border); }
+button.copy:hover { background: var(--tb-hover); color: var(--tb-fg); }
 
 .kv { display: grid; grid-template-columns: 88px 1fr auto; align-items: center; gap: 6px; }
-.kv span { color: var(--openidea-fg-muted, var(--tb-muted)); font-size: 0.92em; }
+.kv span { color: var(--tb-muted); font-size: 0.92em; }
 .kv code {
-  background: var(--openidea-bg, var(--tb-sunken));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 6px;
+  background: var(--tb-sunken);
+  color: var(--tb-echo);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
   padding: 3px 6px;
   overflow-wrap: anywhere;
   min-height: 1.5em;
@@ -172,9 +192,10 @@ button.copy:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filte
 
 pre {
   margin: 0;
-  background: var(--openidea-bg, var(--tb-sunken));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 6px;
+  background: var(--tb-sunken);
+  color: var(--tb-echo);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
   padding: 6px 8px;
   overflow-x: auto;
   font-size: 0.92em;
@@ -183,22 +204,22 @@ pre {
 }
 pre:empty { display: none; }
 
-.hint { color: var(--openidea-fg-muted, var(--tb-muted)); font-size: 0.9em; overflow-wrap: anywhere; }
+.hint { color: var(--tb-muted); font-size: 0.9em; overflow-wrap: anywhere; }
 .hint:empty { display: none; }
-.hint.strong { color: var(--openidea-fg-strong, var(--tb-fg)); }
-.hint.warn { color: var(--openidea-warning, var(--tb-warning)); }
-.error { color: var(--openidea-danger, var(--tb-danger)); font-size: 0.9em; overflow-wrap: anywhere; }
+.hint.strong { color: var(--tb-fg); }
+.hint.warn { color: var(--tb-warning); }
+.error { color: var(--tb-danger); font-size: 0.9em; overflow-wrap: anywhere; }
 .error:empty { display: none; }
-.ok { color: var(--openidea-success, var(--tb-success)); }
-.bad { color: var(--openidea-danger, var(--tb-danger)); }
+.ok { color: var(--tb-success); }
+.bad { color: var(--tb-danger); }
 
-ol#cronRuns { margin: 0; padding-left: 22px; font-size: 0.92em; }
+ol#cronRuns { margin: 0; padding-left: 22px; font-size: 0.92em; color: var(--tb-echo); }
 ol#cronRuns:empty { display: none; }
 
 .re-hl {
-  background: var(--openidea-bg, var(--tb-sunken));
-  border: 1px solid var(--openidea-border, var(--tb-border));
-  border-radius: 6px;
+  background: var(--tb-sunken);
+  border: 1px solid var(--tb-border);
+  border-radius: 0;
   padding: 6px 8px;
   font-size: 0.92em;
   white-space: pre-wrap;
@@ -207,18 +228,19 @@ ol#cronRuns:empty { display: none; }
   overflow: auto;
 }
 .re-hl:empty { display: none; }
-.re-hl mark {
-  background: var(--openidea-bg-selected, #d8e4ff);
-  color: inherit;
-  border-radius: 3px;
-  padding: 0 1px;
-}
-:root[data-theme="dark"] .re-hl mark { background: var(--openidea-bg-selected, #33405c); }
+.re-hl mark { background: var(--tb-mark); color: inherit; border-radius: 0; padding: 0 1px; }
 
 table { border-collapse: collapse; width: 100%; font-size: 0.88em; }
-th, td { border: 1px solid var(--openidea-border, var(--tb-border)); padding: 2px 6px; text-align: left; }
-th { color: var(--openidea-fg-muted, var(--tb-muted)); font-weight: 500; background: var(--openidea-bg, var(--tb-sunken)); }
-td { font-family: var(--openidea-font-mono, var(--tb-mono)); overflow-wrap: anywhere; }
+th, td { border: 1px solid var(--tb-border); padding: 2px 6px; text-align: left; }
+th {
+  color: var(--tb-muted);
+  font-weight: 600;
+  font-size: 0.9em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: var(--tb-sunken);
+}
+td { overflow-wrap: anywhere; }
 
 #jwtTimes .kv { grid-template-columns: 44px 1fr auto; }
 
@@ -227,10 +249,12 @@ td { font-family: var(--openidea-font-mono, var(--tb-mono)); overflow-wrap: anyw
   left: 50%;
   bottom: 14px;
   transform: translateX(-50%);
-  background: var(--openidea-fg, var(--tb-fg));
-  color: var(--openidea-bg, var(--tb-bg));
-  border-radius: 999px;
-  padding: 5px 14px;
+  background: var(--tb-elev);
+  color: var(--tb-fg);
+  border: 1px solid var(--tb-border);
+  border-left: 3px solid var(--tb-accent);
+  border-radius: 0;
+  padding: 4px 10px;
   font-size: 0.9em;
   z-index: 10;
 }

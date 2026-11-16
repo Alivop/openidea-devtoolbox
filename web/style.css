@@ -3,6 +3,7 @@
 :root {
   --tb-bg: #f5f6f8;
   --tb-elev: #ffffff;
+  --tb-sunken: #f1f3f6;
   --tb-input: #ffffff;
   --tb-hover: #e9ecf0;
   --tb-fg: #1f2328;
@@ -20,6 +21,7 @@
 :root[data-theme="dark"] {
   --tb-bg: #1e2126;
   --tb-elev: #262a31;
+  --tb-sunken: #1b1e23;
   --tb-input: #1b1e23;
   --tb-hover: #31363f;
   --tb-fg: #d6dae1;
@@ -47,24 +49,47 @@ h1 { font-size: 1.05em; margin: 0; color: var(--openidea-fg-strong, var(--tb-fg)
 
 #nav { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
 #nav button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--openidea-border, var(--tb-border));
   background: var(--openidea-bg-elevated, var(--tb-elev));
   color: var(--openidea-fg-muted, var(--tb-muted));
   border-radius: 999px;
-  padding: 3px 10px;
+  padding: 2px 7px 2px 6px;
   font: inherit;
   font-size: 0.92em;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
 }
-#nav button:hover { background: var(--openidea-bg-hover, var(--tb-hover)); }
+#nav .ico { width: 13px; height: 13px; flex: none; }
+#nav button:hover { background: var(--openidea-bg-hover, var(--tb-hover)); color: var(--openidea-fg, var(--tb-fg)); }
+#nav button:active { transform: scale(0.96); }
 #nav button.active {
   background: var(--openidea-accent, var(--tb-accent));
   border-color: var(--openidea-accent, var(--tb-accent));
   color: var(--openidea-fg-on-accent, var(--tb-on-accent));
 }
 
-.panel { display: flex; flex-direction: column; gap: 8px; }
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--openidea-bg-elevated, var(--tb-elev));
+  border: 1px solid var(--openidea-border, var(--tb-border));
+  border-radius: 10px;
+  padding: 10px;
+  box-shadow: 0 1px 3px rgb(16 24 40 / 10%);
+}
 .panel[hidden] { display: none; }
+/* show() flips [hidden]; going display:none → flex restarts this animation,
+   so switching tabs animates without any JS. */
+.panel:not([hidden]) { animation: tb-panel-in 0.16s ease-out; }
+:root[data-theme="dark"] .panel { box-shadow: 0 1px 3px rgb(0 0 0 / 30%); }
+@keyframes tb-panel-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
 
 .lbl { color: var(--openidea-fg-muted, var(--tb-muted)); font-size: 0.92em; }
 .lbl.inline { display: inline; }
@@ -82,12 +107,13 @@ input[type="text"], input[type="number"], textarea {
   padding: 5px 7px;
   font: inherit;
   min-width: 0;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 input[type="text"] { flex: 1 1 120px; }
 input[type="text"].wide { flex: 1 1 160px; }
 input[type="number"] { width: 64px; }
 textarea { width: 100%; resize: vertical; font-family: var(--openidea-font-mono, var(--tb-mono)); font-size: 0.95em; }
-textarea[readonly] { background: var(--openidea-bg-elevated, var(--tb-elev)); }
+textarea[readonly] { background: var(--openidea-bg, var(--tb-sunken)); }
 input:focus, select:focus, textarea:focus, button:focus-visible {
   outline: 2px solid var(--openidea-focus-ring, var(--tb-accent));
   outline-offset: 1px;
@@ -102,10 +128,12 @@ button {
   padding: 5px 12px;
   font: inherit;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, filter 0.15s ease, transform 0.08s ease;
 }
 button:hover { filter: brightness(1.08); }
+button:active { transform: translateY(1px); }
 button.ghost {
-  background: var(--openidea-bg-elevated, var(--tb-elev));
+  background: var(--openidea-bg-input, var(--tb-input));
   color: var(--openidea-fg, var(--tb-fg));
   border-color: var(--openidea-border, var(--tb-border));
 }
@@ -115,25 +143,26 @@ button.ghost:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filt
 select {
   -webkit-appearance: none;
   appearance: none;
-  background: var(--openidea-bg-elevated, var(--tb-elev)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  background: var(--openidea-bg-input, var(--tb-input)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
   color: var(--openidea-fg, var(--tb-fg));
   border: 1px solid var(--openidea-border, var(--tb-border));
   border-radius: 6px;
   padding: 5px 24px 5px 10px;
   font: inherit;
   cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 :root[data-theme="dark"] select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2398a2b3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 select:hover { background-color: var(--openidea-bg-hover, var(--tb-hover)); }
-button.copy { padding: 2px 8px; font-size: 0.85em; background: var(--openidea-bg-elevated, var(--tb-elev)); color: var(--openidea-fg-muted, var(--tb-muted)); border-color: var(--openidea-border, var(--tb-border)); }
+button.copy { padding: 2px 8px; font-size: 0.85em; background: var(--openidea-bg-input, var(--tb-input)); color: var(--openidea-fg-muted, var(--tb-muted)); border-color: var(--openidea-border, var(--tb-border)); }
 button.copy:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filter: none; }
 
 .kv { display: grid; grid-template-columns: 88px 1fr auto; align-items: center; gap: 6px; }
 .kv span { color: var(--openidea-fg-muted, var(--tb-muted)); font-size: 0.92em; }
 .kv code {
-  background: var(--openidea-bg-elevated, var(--tb-elev));
+  background: var(--openidea-bg, var(--tb-sunken));
   border: 1px solid var(--openidea-border, var(--tb-border));
   border-radius: 6px;
   padding: 3px 6px;
@@ -143,7 +172,7 @@ button.copy:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filte
 
 pre {
   margin: 0;
-  background: var(--openidea-bg-elevated, var(--tb-elev));
+  background: var(--openidea-bg, var(--tb-sunken));
   border: 1px solid var(--openidea-border, var(--tb-border));
   border-radius: 6px;
   padding: 6px 8px;
@@ -167,7 +196,7 @@ ol#cronRuns { margin: 0; padding-left: 22px; font-size: 0.92em; }
 ol#cronRuns:empty { display: none; }
 
 .re-hl {
-  background: var(--openidea-bg-elevated, var(--tb-elev));
+  background: var(--openidea-bg, var(--tb-sunken));
   border: 1px solid var(--openidea-border, var(--tb-border));
   border-radius: 6px;
   padding: 6px 8px;
@@ -188,7 +217,7 @@ ol#cronRuns:empty { display: none; }
 
 table { border-collapse: collapse; width: 100%; font-size: 0.88em; }
 th, td { border: 1px solid var(--openidea-border, var(--tb-border)); padding: 2px 6px; text-align: left; }
-th { color: var(--openidea-fg-muted, var(--tb-muted)); font-weight: 500; background: var(--openidea-bg-elevated, var(--tb-elev)); }
+th { color: var(--openidea-fg-muted, var(--tb-muted)); font-weight: 500; background: var(--openidea-bg, var(--tb-sunken)); }
 td { font-family: var(--openidea-font-mono, var(--tb-mono)); overflow-wrap: anywhere; }
 
 #jwtTimes .kv { grid-template-columns: 44px 1fr auto; }
@@ -204,4 +233,8 @@ td { font-family: var(--openidea-font-mono, var(--tb-mono)); overflow-wrap: anyw
   padding: 5px 14px;
   font-size: 0.9em;
   z-index: 10;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

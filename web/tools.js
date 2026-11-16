@@ -1666,7 +1666,7 @@
     return joinBytes(body, tag);
   }
 
-  /* stream + classical ciphers */
+  /* stream ciphers */
   function rc4Crypt(key, data) {
     const s = new Uint8Array(256);
     for (let i = 0; i < 256; i++) s[i] = i;
@@ -1688,34 +1688,6 @@
     for (let i = 0; i < data.length; i++) out[i] = data[i] ^ key[i % key.length];
     return out;
   }
-  function caesarCrypt(data, shift, decrypt) {
-    const s = (((decrypt ? -shift : shift) % 26) + 26) % 26;
-    const out = new Uint8Array(data.length);
-    for (let i = 0; i < data.length; i++) {
-      const c = data[i];
-      if (c >= 65 && c <= 90) out[i] = 65 + ((c - 65 + s) % 26);
-      else if (c >= 97 && c <= 122) out[i] = 97 + ((c - 97 + s) % 26);
-      else out[i] = c;
-    }
-    return out;
-  }
-  function vigenereCrypt(data, key, decrypt) {
-    const shifts = [];
-    for (const b of key || []) {
-      const c = b >= 97 && b <= 122 ? b - 32 : b;
-      if (c >= 65 && c <= 90) shifts.push(c - 65);
-    }
-    if (!shifts.length) throw new Error("Vigenère key needs at least one letter A-Z");
-    const out = new Uint8Array(data.length);
-    for (let i = 0, k = 0; i < data.length; i++) {
-      const c = data[i], s = shifts[k % shifts.length] * (decrypt ? -1 : 1);
-      if (c >= 65 && c <= 90) { out[i] = 65 + (((c - 65 + s) % 26) + 26) % 26; k++; }
-      else if (c >= 97 && c <= 122) { out[i] = 97 + (((c - 97 + s) % 26) + 26) % 26; k++; }
-      else out[i] = c;
-    }
-    return out;
-  }
-
   const CIPHERS = {
     aes: { block: 16, keys: [16, 24, 32], modes: ["cbc", "ecb", "ctr", "gcm"], iv: { cbc: 16, ctr: 16, gcm: 12 }, pad: true, max: 1 << 18 },
     sm4: { block: 16, keys: [16], modes: ["cbc", "ecb", "ctr"], iv: { cbc: 16, ctr: 16 }, pad: true, max: 1 << 18 },
@@ -1723,21 +1695,13 @@
     "3des": { block: 8, keys: [16, 24], modes: ["cbc", "ecb"], iv: { cbc: 8 }, pad: true, max: 1 << 16 },
     rc4: { stream: true, modes: [], max: 1 << 18 },
     xor: { stream: true, modes: [], max: 1 << 18 },
-    rot13: { classical: true, modes: [] },
-    caesar: { classical: true, modes: [], shift: true },
-    vigenere: { classical: true, modes: [] },
   };
 
   function crypt(opts) {
-    const { dir, alg, key, iv, data, padding = "pkcs7", shift = 0 } = opts;
+    const { dir, alg, key, iv, data, padding = "pkcs7" } = opts;
     const spec = CIPHERS[alg];
     if (!spec) throw new Error("unsupported cipher: " + alg);
     const decrypt = dir === "decrypt";
-    if (spec.classical) {
-      if (alg === "rot13") return caesarCrypt(data, 13, false);
-      if (alg === "caesar") return caesarCrypt(data, Number(shift) || 0, decrypt);
-      return vigenereCrypt(data, key, decrypt);
-    }
     if (data.length > spec.max) throw new Error(`input too large: ${data.length} bytes (limit ${spec.max} for ${alg})`);
     if (spec.stream) {
       if (!key || !key.length) throw new Error(alg.toUpperCase() + " needs a non-empty key");
@@ -1781,7 +1745,7 @@
     crypt,
     randomKey: (alg, size) => {
       const s = CIPHERS[alg];
-      if (!s || s.classical) throw new Error("no random key for " + alg);
+      if (!s) throw new Error("no random key for " + alg);
       const n = size || (s.keys ? s.keys[s.keys.length - 1] : 16);
       if (s.keys && !s.keys.includes(n)) throw new Error("invalid key size for " + alg);
       return randBytes(n);

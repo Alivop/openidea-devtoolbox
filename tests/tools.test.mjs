@@ -359,23 +359,13 @@ for (const alg of ["aes", "sm4", "3des"]) {
   eq(`zero unpad ${alg}`, Buffer.from(ours("decrypt", alg, "cbc", key, iv, ours("encrypt", alg, "cbc", key, iv, data, "zero"), "zero")).toString(), "zero padded");
 }
 
-/* RC4 / XOR / classical */
+/* RC4 / XOR */
 eq("rc4 Key/Plaintext", hex(ours("encrypt", "rc4", "", B("Key"), null, B("Plaintext"))), "bbf316e8d940af0ad3");
 eq("rc4 Wiki/pedia", hex(ours("encrypt", "rc4", "", B("Wiki"), null, B("pedia"))), "1021bf0420");
 eq("rc4 Secret/Attack at dawn", hex(ours("encrypt", "rc4", "", B("Secret"), null, B("Attack at dawn"))), "45a01f645fc35b383552544b9bf5");
 eq("rc4 decrypt", Buffer.from(ours("decrypt", "rc4", "", B("Key"), null, H("bbf316e8d940af0ad3"))).toString(), "Plaintext");
 eq("xor bytes", hex(ours("encrypt", "xor", "", H("0102"), null, B("abc"))), hex(Buffer.from([0x61 ^ 1, 0x62 ^ 2, 0x63 ^ 1])));
 eq("xor round trip", Buffer.from(ours("decrypt", "xor", "", B("密钥 key"), null, ours("encrypt", "xor", "", B("密钥 key"), null, B("hello 世界")))).toString(), "hello 世界");
-eq("caesar 3", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: 3, data: B("Hello, World!") })).toString(), "Khoor, Zruog!");
-eq("caesar decrypt", Buffer.from(T.crypto.crypt({ dir: "decrypt", alg: "caesar", shift: 3, data: B("Khoor, Zruog!") })).toString(), "Hello, World!");
-eq("caesar 26 identity", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: 26, data: B("abc XYZ") })).toString(), "abc XYZ");
-eq("caesar negative", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: -1, data: B("abc") })).toString(), "zab");
-eq("rot13", Buffer.from(ours("encrypt", "rot13", "", null, null, B("Hello, World!"))).toString(), "Uryyb, Jbeyq!");
-eq("rot13 self-inverse", Buffer.from(ours("encrypt", "rot13", "", null, null, B("Uryyb, Jbeyq!"))).toString(), "Hello, World!");
-eq("vigenere LEMON", Buffer.from(ours("encrypt", "vigenere", "", B("LEMON"), null, B("ATTACKATDAWN"))).toString(), "LXFOPVEFRNHR");
-eq("vigenere decrypt", Buffer.from(ours("decrypt", "vigenere", "", B("LEMON"), null, B("LXFOPVEFRNHR"))).toString(), "ATTACKATDAWN");
-eq("vigenere keeps non-letters", Buffer.from(ours("encrypt", "vigenere", "", B("LEMON"), null, B("ATTACK AT DAWN"))).toString(), "LXFOPV EF RNHR");
-eq("vigenere lowercase key", Buffer.from(ours("encrypt", "vigenere", "", B("lemon"), null, B("attackatdawn"))).toString(), "lxfopvefrnhr");
 
 /* UTF-8 payloads and random-key helpers */
 for (const alg of ["aes", "sm4", "3des", "rc4"]) {
@@ -404,7 +394,6 @@ throws("none padding ragged", () => ours("encrypt", "aes", "ecb", rnd(16), null,
 throws("ragged ciphertext", () => ours("decrypt", "aes", "cbc", rnd(16), rnd(16), rnd(15)));
 throws("rc4 empty key", () => T.crypto.crypt({ dir: "encrypt", alg: "rc4", key: new Uint8Array(0), data: B("x") }));
 throws("rc4 long key", () => T.crypto.crypt({ dir: "encrypt", alg: "rc4", key: rnd(257), data: B("x") }));
-throws("vigenere numeric key", () => ours("encrypt", "vigenere", "", B("123"), null, B("abc")));
 throws("des input cap", () => ours("encrypt", "des", "ecb", rnd(8), null, rnd((1 << 16) + 1)));
 throws("aes input cap", () => ours("encrypt", "aes", "ctr", rnd(16), rnd(16), rnd((1 << 18) + 1)));
 {

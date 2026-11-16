@@ -291,9 +291,6 @@
         <option value="3des">3DES</option>
         <option value="rc4">RC4</option>
         <option value="xor">XOR</option>
-        <option value="rot13">ROT13</option>
-        <option value="caesar" data-i18n="cr.caesar">Caesar</option>
-        <option value="vigenere" data-i18n="cr.vigenere">Vigenère</option>
       </select>
       <select id="crMode">
         <option value="cbc" selected>CBC</option>
@@ -323,10 +320,6 @@
         <option value="text" data-i18n="cr.text">Text</option>
       </select>
       <button id="crIvGen" class="ghost" type="button" data-i18n="cr.random">Random</button>
-    </div>
-    <div class="row" id="crShiftRow" hidden>
-      <label class="lbl inline" for="crShift" data-i18n="cr.shift">Shift</label>
-      <input id="crShift" type="number" min="-25" max="25" value="3">
     </div>
     <div class="row">
       <label class="lbl inline" for="crInFmt" data-i18n="cr.input">Input</label>

@@ -18,7 +18,8 @@
       "ts.input": "Timestamp or date", "ts.ph": "1700000000 / 1700000000000 / 2026-01-01 00:00:00",
       "ts.local": "Local", "ts.utc": "UTC", "ts.seconds": "Seconds", "ts.milliseconds": "Milliseconds",
       "ts.unit": "Detected unit: {0}",
-      "pw.length": "Length", "pw.ambiguous": "No look-alikes (Il1O0o)", "pw.entropy": "≈ {0} bits of entropy",
+      "pw.length": "Length", "pw.count": "Count", "pw.ambiguous": "No look-alikes (Il1O0o)",
+      "pw.entropy": "≈ {0} bits of entropy", "pw.entropyEach": "≈ {0} bits each",
       "json.ph": '{"paste":"JSON here"}', "json.indent": "Indent", "json.sort": "Sort keys",
       "json.errPos": "Line {0}, column {1}: {2}",
       "ids.count": "Count", "ids.size": "NanoID length", "ids.machine": "Machine",
@@ -62,7 +63,8 @@
       "ts.input": "时间戳或日期", "ts.ph": "1700000000 / 1700000000000 / 2026-01-01 00:00:00",
       "ts.local": "本地", "ts.utc": "UTC", "ts.seconds": "秒", "ts.milliseconds": "毫秒",
       "ts.unit": "识别单位：{0}",
-      "pw.length": "长度", "pw.ambiguous": "排除易混淆字符 (Il1O0o)", "pw.entropy": "熵约 {0} 位",
+      "pw.length": "长度", "pw.count": "数量", "pw.ambiguous": "排除易混淆字符 (Il1O0o)",
+      "pw.entropy": "熵约 {0} 位", "pw.entropyEach": "每条约 {0} 位",
       "json.ph": "粘贴 JSON", "json.indent": "缩进", "json.sort": "键排序",
       "json.errPos": "第 {0} 行第 {1} 列：{2}",
       "ids.count": "数量", "ids.size": "NanoID 长度", "ids.machine": "机器号",
@@ -179,27 +181,38 @@
   reruns.push(tsRun);
 
   /* ---------- password ---------- */
-  let pwBits = null;
+  let pwBits = null, pwCount = 1;
+  function pwHint() {
+    if (pwBits !== null) $("pwEntropy").textContent = t(pwCount > 1 ? "pw.entropyEach" : "pw.entropy", pwBits);
+  }
   function pwRun() {
     setErr("pwErr", "");
+    const count = Math.max(1, Math.min(100, +$("pwCount").value || 1));
     try {
-      const r = T.password.generate({
+      const opts = {
         length: +$("pwLen").value,
         lower: $("pwLower").checked,
         upper: $("pwUpper").checked,
         digits: $("pwDigits").checked,
         symbols: $("pwSymbols").checked,
         excludeAmbiguous: $("pwAmb").checked,
-      });
-      setOut("pwOut", r.text);
-      pwBits = r.entropyBits;
-      $("pwEntropy").textContent = t("pw.entropy", pwBits);
+      };
+      const lines = [];
+      for (let i = 0; i < count; i++) {
+        const r = T.password.generate(opts);
+        lines.push(r.text);
+        pwBits = r.entropyBits;
+      }
+      setOut("pwOut", lines.join("\n"));
+      $("pwOut").rows = Math.min(12, Math.max(3, count));
+      pwCount = count;
+      pwHint();
     } catch (e) {
       setErr("pwErr", e.message);
     }
   }
   $("pwRun").addEventListener("click", pwRun);
-  reruns.push(() => { if (pwBits !== null) $("pwEntropy").textContent = t("pw.entropy", pwBits); });
+  reruns.push(pwHint);
 
   /* ---------- json ---------- */
   let jsonLastMinify = false;

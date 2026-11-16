@@ -10,7 +10,7 @@ OpenIDEA 插件：右侧工具窗里的十二个日常开发小工具。
 | Tool | 工具 | What it does |
 | --- | --- | --- |
 | Timestamp | 时间戳转换 | epoch s/ms/µs/ns ↔ date, local + UTC + ISO formats |
-| Password | 密码生成器 | CSPRNG passwords, charset options, entropy estimate |
+| Password | 密码生成器 | CSPRNG passwords, 1–100 per batch, charset options, entropy estimate |
 | JSON | JSON 格式化 | format / minify / validate with error line-column, key sorting |
 | IDs | ID 生成器 | UUID v4/v7, NanoID, Snowflake, MongoDB-style ObjectId, batches |
 | Base64 | Base64 | UTF-8 safe encode/decode, standard + URL-safe alphabet |

@@ -106,6 +106,11 @@ ok("pw lower only", /^[a-z]{8}$/.test(pw3.text));
 /* json */
 eq("json format", T.json.format('{"b":1,"a":[1,2]}', { indent: 2 }).text, '{\n  "b": 1,\n  "a": [\n    1,\n    2\n  ]\n}');
 eq("json sort", T.json.format('{"b":1,"a":2}', { sortKeys: true, indent: 0 }).text, '{"a":2,"b":1}');
+eq("json sort keeps __proto__", T.json.format('{"__proto__":{"enabled":true},"z":1}', { sortKeys: true, indent: 0 }).text, '{"__proto__":{"enabled":true},"z":1}');
+eq("json sort keeps nested __proto__", T.json.format('{"outer":{"__proto__":null,"z":2}}', { sortKeys: true, indent: 0 }).text, '{"outer":{"__proto__":null,"z":2}}');
+eq("json sort __proto__ among keys", T.json.format('{"z":1,"__proto__":{"a":1},"b":2}', { sortKeys: true, indent: 0 }).text, '{"__proto__":{"a":1},"b":2,"z":1}');
+eq("json sort __proto__ value intact", JSON.parse(T.json.format('{"__proto__":{"enabled":true},"z":1}', { sortKeys: true }).text).__proto__.enabled, true);
+eq("json no-sort keeps __proto__", T.json.format('{"__proto__":{"enabled":true},"z":1}', { indent: 0 }).text, '{"__proto__":{"enabled":true},"z":1}');
 eq("json minify", T.json.minify('{ "a" : 1 }').text, '{"a":1}');
 const bad = T.json.format('{"a":}');
 ok("json error pos", !bad.ok && bad.line === 1 && bad.column === 6, JSON.stringify(bad));
@@ -255,6 +260,18 @@ for (const [p, f, s] of [["(a+)+$", "", "a".repeat(28) + "!"], ["(a|aa)*$", "", 
   const ms = Date.now() - t0;
   ok(`regex bomb budget ${p}`, !got.ok && /budget/.test(got.reason) && ms < 3000, `${ms}ms ${got.reason || ""}`);
 }
+/* compilation budget: huge counted repetitions must be rejected before expansion, even on an empty subject */
+for (const p of ["a{1000000000}", "a{0,1000000000}", "a{2,1000000000}", "(a{1000}){1000000}", "(?:){1000000000}", "(?=a{1000000000})b", "(?!a{0,1000000000})b", "a{999999999999999999999999}"]) {
+  const t0 = Date.now();
+  const got = T.regex.test(p, "", "");
+  const ms = Date.now() - t0;
+  ok(`regex compile budget ${p}`, !got.ok && /budget/.test(got.reason) && ms < 1000, `${ms}ms ${got.reason || ""}`);
+}
+ok("regex counted rep compiles", T.regex.test("a{3}", "", "aaa").matches[0].text === "aaa");
+ok("regex ranged rep compiles", T.regex.test("a{2,4}", "", "aaaaa").matches[0].text === "aaaa");
+ok("regex nested rep compiles", T.regex.test("(ab{2}){2}", "", "abbabb").matches[0].text === "abbabb");
+ok("regex large-but-bounded rep compiles", T.regex.test("a{10000}", "", "a".repeat(10000)).matches[0].text === "a".repeat(10000));
+ok("regex lookaround rep compiles", T.regex.test("(?=a{2})aa", "", "aa").ok);
 for (const [p, f] of [["(", ""], ["[z-a]", ""], ["a{2,1}", ""], ["(?<n>a)(?<n>b)", ""], ["\\p{L}", "u"], ["a", "gg"], ["a", "v"], ["a**", ""]]) {
   ok(`regex rejects ${p}/${f}`, !T.regex.test(p, f, "a").ok);
 }

@@ -548,7 +548,7 @@
   }
   const sortedReplacer = (k, v) => {
     if (v && typeof v === "object" && !Array.isArray(v)) {
-      const out = {};
+      const out = Object.create(null);
       for (const key of Object.keys(v).sort()) out[key] = v[key];
       return out;
     }
@@ -808,6 +808,7 @@
   const RE_MAX_MATCHES = 5000;
   const RE_MAX_SUBJECT = 100000;
   const RE_MAX_PATTERN = 1000;
+  const RE_MAX_OPS = 20000;
   const RE_LINES = "\n\r\u2028\u2029";
   const revStr = (s) => Array.from(s).reverse().join("");
   const reIsWord = (c) => /[A-Za-z0-9_]/.test(c);
@@ -1006,10 +1007,32 @@
     }
   }
 
-  function reCompile(ast) {
+  // Saturating op-count estimate; repetitions charge >=1 per iteration so an
+  // empty body (emits nothing) still can't spin the expansion loop unbounded.
+  function reCost(n, cap) {
+    const sat = (x) => (x > cap ? cap + 1 : x);
+    switch (n.t) {
+      case "cat": { let s = 0; for (const x of n.xs) { s += reCost(x, cap); if (s > cap) return cap + 1; } return s; }
+      case "alt": { let s = 0; for (let i = 0; i < n.xs.length; i++) { s += reCost(n.xs[i], cap) + (i < n.xs.length - 1 ? 2 : 0); if (s > cap) return cap + 1; } return s; }
+      case "group": return sat(reCost(n.x, cap) + (n.slot >= 0 ? 2 : 0));
+      case "look": return sat(1 + 2 * reCost(n.x, cap));
+      case "rep": {
+        const b = Math.max(1, reCost(n.x, cap));
+        const opt = n.max === Infinity ? b + 3 : sat((b + 3) * (n.max - n.min));
+        return sat(sat(b * n.min) + opt);
+      }
+      default: return 1;
+    }
+  }
+
+  function reCompile(ast, state = { ops: 0 }) {
     const ops = [];
     let marks = 0;
-    const emit = (op) => { ops.push(op); return ops.length - 1; };
+    const overBudget = () => new Error("pattern too complex: compilation budget exceeded (reduce repetition counts)");
+    const emit = (op) => {
+      if (++state.ops > RE_MAX_OPS) throw overBudget();
+      ops.push(op); return ops.length - 1;
+    };
     function comp(n) {
       switch (n.t) {
         case "char": case "any": case "class": case "anchor": case "backref": return emit(n);
@@ -1036,6 +1059,9 @@
           return -1;
         }
         case "rep": {
+          const b = Math.max(1, reCost(n.x, RE_MAX_OPS));
+          const opt = n.max === Infinity ? b + 3 : (b + 3) * (n.max - n.min);
+          if (b * n.min + opt > RE_MAX_OPS - state.ops) throw overBudget();
           for (let i = 0; i < n.min; i++) comp(n.x);
           if (n.max === Infinity) {
             const sp = emit({ t: "split", a: 0, b: 0 });
@@ -1071,7 +1097,7 @@
           }
           return -1;
         }
-        case "look": return emit({ t: "look", dir: n.dir, neg: n.neg, sub: reCompile(n.x), subRev: reCompile(reReverse(n.x)) });
+        case "look": return emit({ t: "look", dir: n.dir, neg: n.neg, sub: reCompile(n.x, state), subRev: reCompile(reReverse(n.x), state) });
         default: throw new Error("unknown node " + n.t);
       }
     }

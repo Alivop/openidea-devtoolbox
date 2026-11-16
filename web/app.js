@@ -9,7 +9,7 @@
       title: "Developer Toolbox",
       "tool.ts": "Timestamp", "tool.password": "Password", "tool.json": "JSON", "tool.ids": "IDs",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
-      "tool.cron": "Cron", "tool.hash": "Hash", "tool.regex": "Regex",
+      "tool.cron": "Cron", "tool.hash": "Hash", "tool.regex": "Regex", "tool.crypto": "Crypto",
       now: "Now", convert: "Convert", copy: "Copy", generate: "Generate", format: "Format",
       minify: "Minify", encode: "Encode", decode: "Decode", escape: "Escape", unescape: "Unescape",
       parse: "Parse", verify: "Verify", sign: "Sign", preview: "Preview", compute: "Compute",
@@ -39,12 +39,22 @@
       "re.trunc": "Match limit reached", "re.hl": "Matches", "re.index": "Index", "re.match": "Match",
       "re.groups": "Groups", "re.replace": "Replace", "re.replacePh": "replacement ($1, $<name>, $&)",
       "re.none": "no matches",
+      "cr.encrypt": "Encrypt", "cr.decrypt": "Decrypt", "cr.swap": "Swap in/out", "cr.random": "Random",
+      "cr.text": "Text", "cr.nopad": "No padding", "cr.input": "Input", "cr.output": "Output", "cr.shift": "Shift",
+      "cr.caesar": "Caesar", "cr.vigenere": "Vigenère",
+      "cr.keyPh": "key (UTF-8 text or hex)", "cr.ivPh": "IV / nonce",
+      "cr.inPh": "plaintext to encrypt — or ciphertext to decrypt",
+      "cr.notUtf8": "Result is not valid UTF-8 — showing hex instead",
+      "cr.keyBytes": "key {0} B", "cr.ivBytes": "IV {0} B",
+      "cr.needKey": "key must be {0} bytes", "cr.needIv": "IV must be {0} bytes",
+      "cr.size": "{0} bytes", "cr.classicalHint": "letters only, other characters pass through",
+      "cr.gcmHint": "GCM output = ciphertext + 16-byte tag",
     },
     zh: {
       title: "开发者工具箱",
       "tool.ts": "时间戳", "tool.password": "密码", "tool.json": "JSON", "tool.ids": "ID",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
-      "tool.cron": "Cron", "tool.hash": "哈希", "tool.regex": "正则",
+      "tool.cron": "Cron", "tool.hash": "哈希", "tool.regex": "正则", "tool.crypto": "加解密",
       now: "现在", convert: "转换", copy: "复制", generate: "生成", format: "格式化",
       minify: "压缩", encode: "编码", decode: "解码", escape: "转义", unescape: "反转义",
       parse: "解析", verify: "验证", sign: "签名", preview: "预览", compute: "计算",
@@ -74,6 +84,16 @@
       "re.trunc": "已达匹配上限", "re.hl": "匹配高亮", "re.index": "位置", "re.match": "匹配",
       "re.groups": "分组", "re.replace": "替换", "re.replacePh": "替换串（$1、$<name>、$&）",
       "re.none": "无匹配",
+      "cr.encrypt": "加密", "cr.decrypt": "解密", "cr.swap": "交换输入/输出", "cr.random": "随机",
+      "cr.text": "文本", "cr.nopad": "无填充", "cr.input": "输入", "cr.output": "输出", "cr.shift": "位移",
+      "cr.caesar": "凯撒", "cr.vigenere": "维吉尼亚",
+      "cr.keyPh": "密钥（UTF-8 文本或 hex）", "cr.ivPh": "IV / nonce",
+      "cr.inPh": "要加密的明文——或要解密的密文",
+      "cr.notUtf8": "结果不是有效 UTF-8——已改为 hex 显示",
+      "cr.keyBytes": "密钥 {0} 字节", "cr.ivBytes": "IV {0} 字节",
+      "cr.needKey": "密钥需 {0} 字节", "cr.needIv": "IV 需 {0} 字节",
+      "cr.size": "{0} 字节", "cr.classicalHint": "仅处理字母，其他字符原样保留",
+      "cr.gcmHint": "GCM 输出 = 密文 + 16 字节认证标签",
     },
   };
   let lang = /^zh/i.test(navigator.language || "") ? "zh" : "en";
@@ -498,6 +518,144 @@
   for (const id of ["rePattern", "reSubject", "reRepl", "reG", "reI", "reM", "reS", "reU", "reY"]) $(id).addEventListener("input", reSoon);
   $("rePattern").addEventListener("keydown", (e) => { if (e.key === "Enter") reRun(); });
   reruns.push(reRun);
+
+  /* ---------- crypto ---------- */
+  const crFatal = new TextDecoder("utf-8", { fatal: true });
+  let crLastDir = "";
+  const crSpec = () => T.crypto.spec($("crAlg").value);
+  function crBytes(text, fmt) {
+    if (fmt === "hex") return T.util.fromHex(text);
+    if (fmt === "base64") return T.base64.decodeBytes(text);
+    return T.util.bytesOf(text);
+  }
+  function crText(bytes, fmt) {
+    if (fmt === "hex") return T.util.hexOf(bytes);
+    if (fmt === "base64") return T.base64.encodeBytes(bytes, false, true);
+    return crFatal.decode(bytes);
+  }
+  const crKeyFmt = () => ($("crAlg").value === "vigenere" ? "text" : $("crKeyFmt").value);
+  function crKeyLen() { try { return crBytes($("crKey").value, crKeyFmt()).length; } catch { return null; } }
+  function crIvLen() { try { return crBytes($("crIv").value, $("crIvFmt").value).length; } catch { return null; } }
+  function crInfo() {
+    const alg = $("crAlg").value, spec = crSpec(), mode = $("crMode").value, parts = [];
+    const keyLen = crKeyLen();
+    if (spec.classical) {
+      parts.push(alg === "rot13" ? "ROT13" : alg === "caesar" ? t("cr.caesar") : t("cr.vigenere"), t("cr.classicalHint"));
+    } else if (spec.stream) {
+      parts.push(alg.toUpperCase(), keyLen === null ? t("cr.needKey", "1–256") : t("cr.keyBytes", keyLen));
+    } else {
+      let name = alg.toUpperCase();
+      if (alg === "aes" && spec.keys.includes(keyLen)) name += "-" + keyLen * 8;
+      parts.push(name + " · " + mode.toUpperCase());
+      if (spec.pad && mode !== "ctr" && mode !== "gcm") parts.push($("crPad").value === "none" ? t("cr.nopad") : $("crPad").value.toUpperCase());
+    }
+    if (spec.keys) parts.push(keyLen === null ? t("cr.needKey", spec.keys.join("/")) : t("cr.keyBytes", keyLen));
+    if (spec.iv && spec.iv[mode]) {
+      const n = crIvLen();
+      parts.push(n === null ? t("cr.needIv", spec.iv[mode]) : t("cr.ivBytes", n));
+    }
+    if (mode === "gcm") parts.push(t("cr.gcmHint"));
+    $("crInfo").textContent = parts.join(" · ");
+  }
+  function crSync() {
+    const alg = $("crAlg").value, spec = crSpec();
+    const modeSel = $("crMode"), prevMode = modeSel.value;
+    modeSel.textContent = "";
+    for (const m of spec.modes) {
+      const o = document.createElement("option");
+      o.value = m;
+      o.textContent = m.toUpperCase();
+      modeSel.appendChild(o);
+    }
+    if (spec.modes.includes(prevMode)) modeSel.value = prevMode;
+    const mode = modeSel.value;
+    modeSel.hidden = !spec.modes.length;
+    $("crPad").hidden = !spec.pad || mode === "ctr" || mode === "gcm";
+    $("crKeyRow").hidden = !!spec.classical && alg !== "vigenere";
+    $("crKeyFmt").hidden = alg === "vigenere";
+    $("crKeyGen").hidden = !spec.keys;
+    const sizeSel = $("crKeySize"), prevSize = Number(sizeSel.value);
+    sizeSel.textContent = "";
+    if (spec.keys && spec.keys.length > 1) {
+      for (const n of spec.keys) {
+        const o = document.createElement("option");
+        o.value = String(n);
+        o.textContent = alg === "aes" ? n * 8 + " bit" : t("cr.size", n);
+        sizeSel.appendChild(o);
+      }
+      sizeSel.value = String(spec.keys.includes(prevSize) ? prevSize : spec.keys[spec.keys.length - 1]);
+    }
+    sizeSel.hidden = !(spec.keys && spec.keys.length > 1);
+    $("crIvRow").hidden = !(spec.iv && spec.iv[mode]);
+    $("crShiftRow").hidden = !spec.shift;
+    crInfo();
+  }
+  function crRun(dir) {
+    setErr("crErr", "");
+    crLastDir = dir;
+    const raw = $("crInput").value;
+    if (!raw) { setOut("crOut", ""); crInfo(); return; }
+    let out;
+    try {
+      out = T.crypto.crypt({
+        dir,
+        alg: $("crAlg").value,
+        mode: $("crMode").value,
+        key: $("crKeyRow").hidden ? new Uint8Array(0) : crBytes($("crKey").value, crKeyFmt()),
+        iv: $("crIvRow").hidden ? null : crBytes($("crIv").value, $("crIvFmt").value),
+        data: crBytes(raw, $("crInFmt").value),
+        padding: $("crPad").value,
+        shift: Number($("crShift").value),
+      });
+    } catch (e) {
+      setOut("crOut", "");
+      setErr("crErr", String(e.message || e));
+      crInfo();
+      return;
+    }
+    try {
+      setOut("crOut", crText(out, $("crOutFmt").value));
+    } catch {
+      setOut("crOut", T.util.hexOf(out));
+      setErr("crErr", t("cr.notUtf8"));
+    }
+    crInfo();
+  }
+  $("crAlg").addEventListener("change", () => {
+    if (crSpec().classical) { $("crInFmt").value = "text"; $("crOutFmt").value = "text"; }
+    else if ($("crOutFmt").value === "text") $("crOutFmt").value = "base64";
+    crSync();
+  });
+  for (const id of ["crMode", "crPad", "crKeySize"]) $(id).addEventListener("change", crSync);
+  for (const id of ["crKey", "crIv", "crKeyFmt", "crIvFmt", "crShift"]) $(id).addEventListener("input", crInfo);
+  $("crKeyGen").addEventListener("click", () => {
+    $("crKeyFmt").value = "hex";
+    $("crKey").value = T.util.hexOf(T.crypto.randomKey($("crAlg").value, $("crKeySize").hidden ? undefined : Number($("crKeySize").value)));
+    crInfo();
+  });
+  $("crIvGen").addEventListener("click", () => {
+    $("crIvFmt").value = "hex";
+    $("crIv").value = T.util.hexOf(T.crypto.randomIv($("crAlg").value, $("crMode").value));
+    crInfo();
+  });
+  $("crEnc").addEventListener("click", () => crRun("encrypt"));
+  $("crDec").addEventListener("click", () => crRun("decrypt"));
+  $("crSwap").addEventListener("click", () => {
+    const out = $("crOut").value;
+    if (!out) return;
+    const inFmt = $("crInFmt").value;
+    $("crInFmt").value = $("crOutFmt").value;
+    $("crOutFmt").value = inFmt;
+    $("crInput").value = out;
+    setOut("crOut", "");
+    setErr("crErr", "");
+    crInfo();
+  });
+  $("crInput").addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) crRun(crLastDir || "encrypt");
+  });
+  crSync();
+  reruns.push(() => { crSync(); if (crLastDir && $("crOut").value) crRun(crLastDir); });
 
   /* ---------- shell: nav, language, theme ---------- */
   const navBtns = [...document.querySelectorAll("#nav button")];

@@ -27,6 +27,7 @@
   <button type="button" data-tool="cron" data-i18n="tool.cron">Cron</button>
   <button type="button" data-tool="regex" data-i18n="tool.regex">Regex</button>
   <button type="button" data-tool="hash" data-i18n="tool.hash">Hash</button>
+  <button type="button" data-tool="crypto" data-i18n="tool.crypto">Crypto</button>
 </nav>
 
 <main>
@@ -277,6 +278,79 @@
     <div class="error" id="hashErr"></div>
     <textarea id="hashOut" rows="2" readonly spellcheck="false" class="mono"></textarea>
     <div class="row end"><button class="copy" type="button" data-copy="hashOut" data-i18n="copy">Copy</button></div>
+  </section>
+
+  <!-- crypto -->
+  <section class="panel" id="panel-crypto" hidden>
+    <div class="row">
+      <select id="crAlg">
+        <option value="aes" selected>AES</option>
+        <option value="sm4">SM4</option>
+        <option value="des">DES</option>
+        <option value="3des">3DES</option>
+        <option value="rc4">RC4</option>
+        <option value="xor">XOR</option>
+        <option value="rot13">ROT13</option>
+        <option value="caesar" data-i18n="cr.caesar">Caesar</option>
+        <option value="vigenere" data-i18n="cr.vigenere">Vigenère</option>
+      </select>
+      <select id="crMode">
+        <option value="cbc" selected>CBC</option>
+        <option value="ecb">ECB</option>
+        <option value="ctr">CTR</option>
+        <option value="gcm">GCM</option>
+      </select>
+      <select id="crPad">
+        <option value="pkcs7" selected>PKCS7</option>
+        <option value="zero">Zero</option>
+        <option value="none" data-i18n="cr.nopad">No padding</option>
+      </select>
+      <select id="crKeySize" hidden></select>
+    </div>
+    <div class="row" id="crKeyRow">
+      <input id="crKey" type="text" class="wide mono" spellcheck="false" data-i18n-ph="cr.keyPh" placeholder="key (UTF-8 text or hex)">
+      <select id="crKeyFmt">
+        <option value="text" selected data-i18n="cr.text">Text</option>
+        <option value="hex">Hex</option>
+      </select>
+      <button id="crKeyGen" class="ghost" type="button" data-i18n="cr.random">Random</button>
+    </div>
+    <div class="row" id="crIvRow">
+      <input id="crIv" type="text" class="wide mono" spellcheck="false" data-i18n-ph="cr.ivPh" placeholder="IV / nonce">
+      <select id="crIvFmt">
+        <option value="hex" selected>Hex</option>
+        <option value="text" data-i18n="cr.text">Text</option>
+      </select>
+      <button id="crIvGen" class="ghost" type="button" data-i18n="cr.random">Random</button>
+    </div>
+    <div class="row" id="crShiftRow" hidden>
+      <label class="lbl inline" for="crShift" data-i18n="cr.shift">Shift</label>
+      <input id="crShift" type="number" min="-25" max="25" value="3">
+    </div>
+    <div class="row">
+      <label class="lbl inline" for="crInFmt" data-i18n="cr.input">Input</label>
+      <select id="crInFmt">
+        <option value="text" selected data-i18n="cr.text">Text</option>
+        <option value="base64">Base64</option>
+        <option value="hex">Hex</option>
+      </select>
+      <label class="lbl inline" for="crOutFmt" data-i18n="cr.output">Output</label>
+      <select id="crOutFmt">
+        <option value="base64" selected>Base64</option>
+        <option value="hex">Hex</option>
+        <option value="text" data-i18n="cr.text">Text</option>
+      </select>
+    </div>
+    <textarea id="crInput" rows="5" spellcheck="false" data-i18n-ph="cr.inPh" placeholder="plaintext to encrypt — or ciphertext to decrypt"></textarea>
+    <div class="row">
+      <button id="crEnc" type="button" data-i18n="cr.encrypt">Encrypt</button>
+      <button id="crDec" type="button" data-i18n="cr.decrypt">Decrypt</button>
+      <button id="crSwap" class="ghost" type="button" data-i18n="cr.swap">Swap in/out</button>
+    </div>
+    <div class="error" id="crErr"></div>
+    <div class="hint" id="crInfo"></div>
+    <textarea id="crOut" rows="4" readonly spellcheck="false" class="mono"></textarea>
+    <div class="row end"><button class="copy" type="button" data-copy="crOut" data-i18n="copy">Copy</button></div>
   </section>
 </main>
 

@@ -1269,9 +1269,498 @@
     },
   };
 
+  /* ---------- crypto: symmetric ciphers, implemented locally ----------
+   * No WebCrypto: the sandboxed view may not be a secure context, and every
+   * algorithm here must work synchronously without a Worker. */
+
+  const be32 = (b, o) => ((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]) >>> 0;
+  function joinBytes(...parts) {
+    let n = 0;
+    for (const p of parts) n += p.length;
+    const out = new Uint8Array(n);
+    let at = 0;
+    for (const p of parts) { out.set(p, at); at += p.length; }
+    return out;
+  }
+  const gfXtime = (a) => { const b = a << 1; return (b & 0x100 ? b ^ 0x11b : b) & 255; };
+  const GF_EXP = new Uint8Array(512);
+  const GF_LOG = new Uint8Array(256);
+  for (let i = 0, g = 1; i < 255; i++) { GF_EXP[i] = g; GF_LOG[g] = i; g = gfXtime(g) ^ g; }
+  for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+  const gfMul = (a, b) => (a && b ? GF_EXP[(GF_LOG[a] + GF_LOG[b]) % 255] : 0);
+  const gfInv = (a) => (a ? GF_EXP[255 - GF_LOG[a]] : 0);
+  const rotl8 = (x, n) => ((x << n) | (x >>> (8 - n))) & 255;
+
+  const AES_SBOX = new Uint8Array(256);
+  const AES_ISBOX = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) {
+    const b = gfInv(i);
+    const s = (b ^ rotl8(b, 1) ^ rotl8(b, 2) ^ rotl8(b, 3) ^ rotl8(b, 4) ^ 0x63) & 255;
+    AES_SBOX[i] = s;
+    AES_ISBOX[s] = i;
+  }
+  const aesSubWord = (w) => ((AES_SBOX[(w >>> 24) & 255] << 24) | (AES_SBOX[(w >>> 16) & 255] << 16) | (AES_SBOX[(w >>> 8) & 255] << 8) | AES_SBOX[w & 255]) >>> 0;
+
+  function aesKey(key) {
+    const nk = key.length / 4, nr = nk + 6;
+    const w = new Uint32Array(4 * (nr + 1));
+    for (let i = 0; i < nk; i++) w[i] = be32(key, i * 4);
+    let rcon = 1;
+    for (let i = nk; i < w.length; i++) {
+      let t = w[i - 1];
+      if (i % nk === 0) {
+        t = (aesSubWord(((t << 8) | (t >>> 24)) >>> 0) ^ (rcon << 24)) >>> 0;
+        rcon = gfXtime(rcon);
+      } else if (nk > 6 && i % nk === 4) t = aesSubWord(t);
+      w[i] = (w[i - nk] ^ t) >>> 0;
+    }
+    return { w, nr };
+  }
+  function aesShiftRows(s, inv) {
+    for (let r = 1; r < 4; r++) {
+      const row = [s[r], s[r + 4], s[r + 8], s[r + 12]];
+      for (let c = 0; c < 4; c++) s[r + 4 * c] = row[(c + (inv ? 4 - r : r)) % 4];
+    }
+  }
+  function aesMixColumns(s, inv) {
+    for (let c = 0; c < 4; c++) {
+      const o = c * 4, a0 = s[o], a1 = s[o + 1], a2 = s[o + 2], a3 = s[o + 3];
+      if (inv) {
+        s[o] = gfMul(a0, 14) ^ gfMul(a1, 11) ^ gfMul(a2, 13) ^ gfMul(a3, 9);
+        s[o + 1] = gfMul(a0, 9) ^ gfMul(a1, 14) ^ gfMul(a2, 11) ^ gfMul(a3, 13);
+        s[o + 2] = gfMul(a0, 13) ^ gfMul(a1, 9) ^ gfMul(a2, 14) ^ gfMul(a3, 11);
+        s[o + 3] = gfMul(a0, 11) ^ gfMul(a1, 13) ^ gfMul(a2, 9) ^ gfMul(a3, 14);
+      } else {
+        s[o] = gfMul(a0, 2) ^ gfMul(a1, 3) ^ a2 ^ a3;
+        s[o + 1] = a0 ^ gfMul(a1, 2) ^ gfMul(a2, 3) ^ a3;
+        s[o + 2] = a0 ^ a1 ^ gfMul(a2, 2) ^ gfMul(a3, 3);
+        s[o + 3] = gfMul(a0, 3) ^ a1 ^ a2 ^ gfMul(a3, 2);
+      }
+    }
+  }
+  function aesBlock(block, exp, decrypt) {
+    const s = Uint8Array.from(block), nr = exp.nr, w = exp.w;
+    const addKey = (round) => {
+      for (let c = 0; c < 4; c++) {
+        const k = w[round * 4 + c];
+        for (let r = 0; r < 4; r++) s[r + 4 * c] ^= (k >>> (24 - 8 * r)) & 255;
+      }
+    };
+    if (decrypt) {
+      addKey(nr);
+      for (let round = nr - 1; round >= 0; round--) {
+        aesShiftRows(s, true);
+        for (let i = 0; i < 16; i++) s[i] = AES_ISBOX[s[i]];
+        addKey(round);
+        if (round > 0) aesMixColumns(s, true);
+      }
+    } else {
+      addKey(0);
+      for (let round = 1; round <= nr; round++) {
+        for (let i = 0; i < 16; i++) s[i] = AES_SBOX[s[i]];
+        aesShiftRows(s, false);
+        if (round < nr) aesMixColumns(s, false);
+        addKey(round);
+      }
+    }
+    return s;
+  }
+
+  /* DES / 3DES (bit-permutation form; small inputs only) */
+  const DES_IP = [58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4, 62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8, 57, 49, 41, 33, 25, 17, 9, 1, 59, 51, 43, 35, 27, 19, 11, 3, 61, 53, 45, 37, 29, 21, 13, 5, 63, 55, 47, 39, 31, 23, 15, 7];
+  const DES_FP = [40, 8, 48, 16, 56, 24, 64, 32, 39, 7, 47, 15, 55, 23, 63, 31, 38, 6, 46, 14, 54, 22, 62, 30, 37, 5, 45, 13, 53, 21, 61, 29, 36, 4, 44, 12, 52, 20, 60, 28, 35, 3, 43, 11, 51, 19, 59, 27, 34, 2, 42, 10, 50, 18, 58, 26, 33, 1, 41, 9, 49, 17, 57, 25];
+  const DES_E = [32, 1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 9, 8, 9, 10, 11, 12, 13, 12, 13, 14, 15, 16, 17, 16, 17, 18, 19, 20, 21, 20, 21, 22, 23, 24, 25, 24, 25, 26, 27, 28, 29, 28, 29, 30, 31, 32, 1];
+  const DES_P = [16, 7, 20, 21, 29, 12, 28, 17, 1, 15, 23, 26, 5, 18, 31, 10, 2, 8, 24, 14, 32, 27, 3, 9, 19, 13, 30, 6, 22, 11, 4, 25];
+  const DES_PC1 = [57, 49, 41, 33, 25, 17, 9, 1, 58, 50, 42, 34, 26, 18, 10, 2, 59, 51, 43, 35, 27, 19, 11, 3, 60, 52, 44, 36, 63, 55, 47, 39, 31, 23, 15, 7, 62, 54, 46, 38, 30, 22, 14, 6, 61, 53, 45, 37, 29, 21, 13, 5, 28, 20, 12, 4];
+  const DES_PC2 = [14, 17, 11, 24, 1, 5, 3, 28, 15, 6, 21, 10, 23, 19, 12, 4, 26, 8, 16, 7, 27, 20, 13, 2, 41, 52, 31, 37, 47, 55, 30, 40, 51, 45, 33, 48, 44, 49, 39, 56, 34, 53, 46, 42, 50, 36, 29, 32];
+  const DES_SHIFTS = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
+  const DES_S = [
+    [14, 4, 13, 1, 2, 15, 11, 8, 3, 10, 6, 12, 5, 9, 0, 7, 0, 15, 7, 4, 14, 2, 13, 1, 10, 6, 12, 11, 9, 5, 3, 8, 4, 1, 14, 8, 13, 6, 2, 11, 15, 12, 9, 7, 3, 10, 5, 0, 15, 12, 8, 2, 4, 9, 1, 7, 5, 11, 3, 14, 10, 0, 6, 13],
+    [15, 1, 8, 14, 6, 11, 3, 4, 9, 7, 2, 13, 12, 0, 5, 10, 3, 13, 4, 7, 15, 2, 8, 14, 12, 0, 1, 10, 6, 9, 11, 5, 0, 14, 7, 11, 10, 4, 13, 1, 5, 8, 12, 6, 9, 3, 2, 15, 13, 8, 10, 1, 3, 15, 4, 2, 11, 6, 7, 12, 0, 5, 14, 9],
+    [10, 0, 9, 14, 6, 3, 15, 5, 1, 13, 12, 7, 11, 4, 2, 8, 13, 7, 0, 9, 3, 4, 6, 10, 2, 8, 5, 14, 12, 11, 15, 1, 13, 6, 4, 9, 8, 15, 3, 0, 11, 1, 2, 12, 5, 10, 14, 7, 1, 10, 13, 0, 6, 9, 8, 7, 4, 15, 14, 3, 11, 5, 2, 12],
+    [7, 13, 14, 3, 0, 6, 9, 10, 1, 2, 8, 5, 11, 12, 4, 15, 13, 8, 11, 5, 6, 15, 0, 3, 4, 7, 2, 12, 1, 10, 14, 9, 10, 6, 9, 0, 12, 11, 7, 13, 15, 1, 3, 14, 5, 2, 8, 4, 3, 15, 0, 6, 10, 1, 13, 8, 9, 4, 5, 11, 12, 7, 2, 14],
+    [2, 12, 4, 1, 7, 10, 11, 6, 8, 5, 3, 15, 13, 0, 14, 9, 14, 11, 2, 12, 4, 7, 13, 1, 5, 0, 15, 10, 3, 9, 8, 6, 4, 2, 1, 11, 10, 13, 7, 8, 15, 9, 12, 5, 6, 3, 0, 14, 11, 8, 12, 7, 1, 14, 2, 13, 6, 15, 0, 9, 10, 4, 5, 3],
+    [12, 1, 10, 15, 9, 2, 6, 8, 0, 13, 3, 4, 14, 7, 5, 11, 10, 15, 4, 2, 7, 12, 9, 5, 6, 1, 13, 14, 0, 11, 3, 8, 9, 14, 15, 5, 2, 8, 12, 3, 7, 0, 4, 10, 1, 13, 11, 6, 4, 3, 2, 12, 9, 5, 15, 10, 11, 14, 1, 7, 6, 0, 8, 13],
+    [4, 11, 2, 14, 15, 0, 8, 13, 3, 12, 9, 7, 5, 10, 6, 1, 13, 0, 11, 7, 4, 9, 1, 10, 14, 3, 5, 12, 2, 15, 8, 6, 1, 4, 11, 13, 12, 3, 7, 14, 10, 15, 6, 8, 0, 5, 9, 2, 6, 11, 13, 8, 1, 4, 10, 7, 9, 5, 0, 15, 14, 2, 3, 12],
+    [13, 2, 8, 4, 6, 15, 11, 1, 10, 9, 3, 14, 5, 0, 12, 7, 1, 15, 13, 8, 10, 3, 7, 4, 12, 5, 6, 11, 0, 14, 9, 2, 7, 11, 4, 1, 9, 12, 14, 2, 0, 6, 10, 13, 15, 3, 5, 8, 2, 1, 14, 7, 4, 10, 8, 13, 15, 12, 9, 0, 3, 5, 6, 11],
+  ];
+  function desBits(bytes) {
+    const out = new Uint8Array(bytes.length * 8);
+    for (let i = 0; i < bytes.length; i++) for (let j = 0; j < 8; j++) out[i * 8 + j] = (bytes[i] >> (7 - j)) & 1;
+    return out;
+  }
+  function desBytes(bits) {
+    const out = new Uint8Array(bits.length / 8);
+    for (let i = 0; i < out.length; i++) {
+      let v = 0;
+      for (let j = 0; j < 8; j++) v = (v << 1) | bits[i * 8 + j];
+      out[i] = v;
+    }
+    return out;
+  }
+  function desPerm(bits, table) {
+    const out = new Uint8Array(table.length);
+    for (let i = 0; i < table.length; i++) out[i] = bits[table[i] - 1];
+    return out;
+  }
+  function desRot(bits, n) {
+    const out = new Uint8Array(bits.length);
+    for (let i = 0; i < bits.length; i++) out[i] = bits[(i + n) % bits.length];
+    return out;
+  }
+  function desKeys(key8) {
+    const k = desPerm(desBits(key8), DES_PC1);
+    let c = k.subarray(0, 28), d = k.subarray(28, 56);
+    const keys = [];
+    for (let r = 0; r < 16; r++) {
+      c = desRot(c, DES_SHIFTS[r]);
+      d = desRot(d, DES_SHIFTS[r]);
+      keys.push(desPerm(joinBytes(c, d), DES_PC2));
+    }
+    return keys;
+  }
+  function desBlock(block, keys, decrypt) {
+    const bits = desPerm(desBits(block), DES_IP);
+    let l = bits.subarray(0, 32), r = bits.subarray(32, 64);
+    for (let i = 0; i < 16; i++) {
+      const k = keys[decrypt ? 15 - i : i];
+      const er = desPerm(r, DES_E);
+      for (let j = 0; j < 48; j++) er[j] ^= k[j];
+      const sb = new Uint8Array(32);
+      for (let s = 0; s < 8; s++) {
+        const row = (er[s * 6] << 1) | er[s * 6 + 5];
+        const col = (er[s * 6 + 1] << 3) | (er[s * 6 + 2] << 2) | (er[s * 6 + 3] << 1) | er[s * 6 + 4];
+        const v = DES_S[s][row * 16 + col];
+        for (let b = 0; b < 4; b++) sb[s * 4 + b] = (v >> (3 - b)) & 1;
+      }
+      const f = desPerm(sb, DES_P);
+      const next = new Uint8Array(32);
+      for (let j = 0; j < 32; j++) next[j] = l[j] ^ f[j];
+      l = r;
+      r = next;
+    }
+    return desBytes(desPerm(joinBytes(r, l), DES_FP));
+  }
+  function des3Block(block, k1, k2, k3, decrypt) {
+    return decrypt
+      ? desBlock(desBlock(desBlock(block, k3, true), k2, false), k1, true)
+      : desBlock(desBlock(desBlock(block, k1, false), k2, true), k3, false);
+  }
+
+  /* SM4 (GB/T 32907-2016) */
+  const SM4_SBOX = new Uint8Array([
+    0xd6, 0x90, 0xe9, 0xfe, 0xcc, 0xe1, 0x3d, 0xb7, 0x16, 0xb6, 0x14, 0xc2, 0x28, 0xfb, 0x2c, 0x05,
+    0x2b, 0x67, 0x9a, 0x76, 0x2a, 0xbe, 0x04, 0xc3, 0xaa, 0x44, 0x13, 0x26, 0x49, 0x86, 0x06, 0x99,
+    0x9c, 0x42, 0x50, 0xf4, 0x91, 0xef, 0x98, 0x7a, 0x33, 0x54, 0x0b, 0x43, 0xed, 0xcf, 0xac, 0x62,
+    0xe4, 0xb3, 0x1c, 0xa9, 0xc9, 0x08, 0xe8, 0x95, 0x80, 0xdf, 0x94, 0xfa, 0x75, 0x8f, 0x3f, 0xa6,
+    0x47, 0x07, 0xa7, 0xfc, 0xf3, 0x73, 0x17, 0xba, 0x83, 0x59, 0x3c, 0x19, 0xe6, 0x85, 0x4f, 0xa8,
+    0x68, 0x6b, 0x81, 0xb2, 0x71, 0x64, 0xda, 0x8b, 0xf8, 0xeb, 0x0f, 0x4b, 0x70, 0x56, 0x9d, 0x35,
+    0x1e, 0x24, 0x0e, 0x5e, 0x63, 0x58, 0xd1, 0xa2, 0x25, 0x22, 0x7c, 0x3b, 0x01, 0x21, 0x78, 0x87,
+    0xd4, 0x00, 0x46, 0x57, 0x9f, 0xd3, 0x27, 0x52, 0x4c, 0x36, 0x02, 0xe7, 0xa0, 0xc4, 0xc8, 0x9e,
+    0xea, 0xbf, 0x8a, 0xd2, 0x40, 0xc7, 0x38, 0xb5, 0xa3, 0xf7, 0xf2, 0xce, 0xf9, 0x61, 0x15, 0xa1,
+    0xe0, 0xae, 0x5d, 0xa4, 0x9b, 0x34, 0x1a, 0x55, 0xad, 0x93, 0x32, 0x30, 0xf5, 0x8c, 0xb1, 0xe3,
+    0x1d, 0xf6, 0xe2, 0x2e, 0x82, 0x66, 0xca, 0x60, 0xc0, 0x29, 0x23, 0xab, 0x0d, 0x53, 0x4e, 0x6f,
+    0xd5, 0xdb, 0x37, 0x45, 0xde, 0xfd, 0x8e, 0x2f, 0x03, 0xff, 0x6a, 0x72, 0x6d, 0x6c, 0x5b, 0x51,
+    0x8d, 0x1b, 0xaf, 0x92, 0xbb, 0xdd, 0xbc, 0x7f, 0x11, 0xd9, 0x5c, 0x41, 0x1f, 0x10, 0x5a, 0xd8,
+    0x0a, 0xc1, 0x31, 0x88, 0xa5, 0xcd, 0x7b, 0xbd, 0x2d, 0x74, 0xd0, 0x12, 0xb8, 0xe5, 0xb4, 0xb0,
+    0x89, 0x69, 0x97, 0x4a, 0x0c, 0x96, 0x77, 0x7e, 0x65, 0xb9, 0xf1, 0x09, 0xc5, 0x6e, 0xc6, 0x84,
+    0x18, 0xf0, 0x7d, 0xec, 0x3a, 0xdc, 0x4d, 0x20, 0x79, 0xee, 0x5f, 0x3e, 0xd7, 0xcb, 0x39, 0x48,
+  ]);
+  const SM4_FK = [0xa3b1bac6, 0x56aa3350, 0x677d9197, 0xb27022dc];
+  const SM4_CK = (() => {
+    const a = new Uint32Array(32);
+    for (let i = 0; i < 32; i++) {
+      let v = 0;
+      for (let j = 0; j < 4; j++) v = ((v << 8) | (((4 * i + j) * 7) % 256)) >>> 0;
+      a[i] = v;
+    }
+    return a;
+  })();
+  const sm4Tau = (a) => ((SM4_SBOX[(a >>> 24) & 255] << 24) | (SM4_SBOX[(a >>> 16) & 255] << 16) | (SM4_SBOX[(a >>> 8) & 255] << 8) | SM4_SBOX[a & 255]) >>> 0;
+  const sm4L = (b) => (b ^ rotl32(b, 2) ^ rotl32(b, 10) ^ rotl32(b, 18) ^ rotl32(b, 24)) >>> 0;
+  const sm4LKey = (b) => (b ^ rotl32(b, 13) ^ rotl32(b, 23)) >>> 0;
+  function sm4Keys(key) {
+    const k = new Uint32Array(36);
+    for (let i = 0; i < 4; i++) k[i] = (be32(key, i * 4) ^ SM4_FK[i]) >>> 0;
+    const rk = new Uint32Array(32);
+    for (let i = 0; i < 32; i++) {
+      k[i + 4] = (k[i] ^ sm4LKey(sm4Tau((k[i + 1] ^ k[i + 2] ^ k[i + 3] ^ SM4_CK[i]) >>> 0))) >>> 0;
+      rk[i] = k[i + 4];
+    }
+    return rk;
+  }
+  function sm4Block(block, rk, decrypt) {
+    const x = new Uint32Array(36);
+    for (let i = 0; i < 4; i++) x[i] = be32(block, i * 4);
+    for (let i = 0; i < 32; i++) {
+      const k = rk[decrypt ? 31 - i : i];
+      x[i + 4] = (x[i] ^ sm4L(sm4Tau((x[i + 1] ^ x[i + 2] ^ x[i + 3] ^ k) >>> 0))) >>> 0;
+    }
+    const out = new Uint8Array(16);
+    for (let i = 0; i < 4; i++) {
+      const v = x[35 - i];
+      out[i * 4] = v >>> 24; out[i * 4 + 1] = (v >>> 16) & 255; out[i * 4 + 2] = (v >>> 8) & 255; out[i * 4 + 3] = v & 255;
+    }
+    return out;
+  }
+
+  /* padding, modes */
+  function padData(data, bs, mode) {
+    if (mode === "none") {
+      if (data.length % bs) throw new Error(`no padding: input must be a multiple of ${bs} bytes (got ${data.length})`);
+      return data;
+    }
+    if (mode === "zero") {
+      const out = new Uint8Array(Math.ceil(data.length / bs) * bs);
+      out.set(data);
+      return out;
+    }
+    const n = bs - (data.length % bs);
+    const out = new Uint8Array(data.length + n);
+    out.set(data);
+    out.fill(n, data.length);
+    return out;
+  }
+  function unpadData(data, bs, mode) {
+    if (mode === "none") return data;
+    if (mode === "zero") {
+      let end = data.length;
+      while (end > 0 && data[end - 1] === 0) end--;
+      return data.subarray(0, end);
+    }
+    if (!data.length || data.length % bs) throw new Error("invalid PKCS7 padding: length is not a multiple of the block size");
+    const n = data[data.length - 1];
+    if (n < 1 || n > bs) throw new Error(`invalid PKCS7 padding byte: ${n}`);
+    for (let i = data.length - n; i < data.length; i++) if (data[i] !== n) throw new Error("invalid PKCS7 padding (wrong key or IV?)");
+    return data.subarray(0, data.length - n);
+  }
+  function ecbCrypt(blockFn, data, decrypt) {
+    const out = new Uint8Array(data.length);
+    const size = blockFn.size;
+    for (let off = 0; off < data.length; off += size) out.set(blockFn(data.subarray(off, off + size), decrypt), off);
+    return out;
+  }
+  function cbcCrypt(blockFn, iv, data, decrypt) {
+    const bs = iv.length, out = new Uint8Array(data.length);
+    let prev = Uint8Array.from(iv);
+    for (let off = 0; off < data.length; off += bs) {
+      const blk = data.subarray(off, off + bs);
+      if (decrypt) {
+        const dec = blockFn(blk, true);
+        for (let i = 0; i < bs; i++) out[off + i] = dec[i] ^ prev[i];
+        prev = Uint8Array.from(blk);
+      } else {
+        const x = new Uint8Array(bs);
+        for (let i = 0; i < bs; i++) x[i] = blk[i] ^ prev[i];
+        prev = blockFn(x, false);
+        out.set(prev, off);
+      }
+    }
+    return out;
+  }
+  function ctrCrypt(blockFn, iv, data) {
+    const bs = iv.length, ctr = Uint8Array.from(iv), out = new Uint8Array(data.length);
+    for (let off = 0; off < data.length; off += bs) {
+      const ks = blockFn(ctr, false);
+      const n = Math.min(bs, data.length - off);
+      for (let i = 0; i < n; i++) out[off + i] = data[off + i] ^ ks[i];
+      for (let i = bs - 1; i >= 0; i--) { ctr[i] = (ctr[i] + 1) & 255; if (ctr[i]) break; }
+    }
+    return out;
+  }
+
+  /* GCM: GHASH over GF(2^128) with a per-key shift table */
+  const GCM_R = 0xe1000000000000000000000000000000n;
+  function bigOfBytes(b) { let v = 0n; for (const x of b) v = (v << 8n) | BigInt(x); return v; }
+  function bytesOfBig(v, n) { const out = new Uint8Array(n); for (let i = 0; i < n; i++) out[n - 1 - i] = Number((v >> BigInt(8 * i)) & 255n); return out; }
+  function gcmTable(h) {
+    let v = bigOfBytes(h);
+    const table = new Array(128);
+    for (let i = 0; i < 128; i++) { table[i] = v; v = v & 1n ? (v >> 1n) ^ GCM_R : v >> 1n; }
+    return table;
+  }
+  function gcmMul(table, x) {
+    let z = 0n;
+    for (let i = 0; i < 16; i++) {
+      const b = x[i];
+      if (!b) continue;
+      for (let j = 0; j < 8; j++) if ((b >> j) & 1) z ^= table[i * 8 + 7 - j];
+    }
+    return bytesOfBig(z, 16);
+  }
+  function ghash(table, data) {
+    let z = new Uint8Array(16);
+    for (let off = 0; off < data.length; off += 16) {
+      const x = new Uint8Array(16);
+      for (let i = 0; i < 16; i++) x[i] = z[i] ^ data[off + i];
+      z = gcmMul(table, x);
+    }
+    return z;
+  }
+  function gcmCrypt(blockFn, iv, data, decrypt) {
+    const enc = (b) => blockFn(b, false);
+    const table = gcmTable(enc(new Uint8Array(16)));
+    let j0;
+    if (iv.length === 12) { j0 = new Uint8Array(16); j0.set(iv); j0[15] = 1; }
+    else {
+      const buf = new Uint8Array(Math.ceil(iv.length / 16) * 16 + 16);
+      buf.set(iv);
+      buf.set(bytesOfBig(BigInt(iv.length) * 8n, 8), buf.length - 8);
+      j0 = ghash(table, buf);
+    }
+    const tagLen = 16;
+    if (decrypt && data.length < tagLen) throw new Error("GCM input is shorter than the 16-byte authentication tag");
+    const ct = decrypt ? data.subarray(0, data.length - tagLen) : data;
+    const counter = Uint8Array.from(j0);
+    for (let i = 15; i >= 12; i--) { counter[i] = (counter[i] + 1) & 255; if (counter[i]) break; }
+    const body = ctrCrypt(enc, counter, ct);
+    const auth = decrypt ? ct : body;
+    const padded = new Uint8Array(Math.ceil(auth.length / 16) * 16);
+    padded.set(auth);
+    const s = ghash(table, joinBytes(padded, new Uint8Array(8), bytesOfBig(BigInt(auth.length) * 8n, 8)));
+    const mask = enc(j0);
+    const tag = new Uint8Array(16);
+    for (let i = 0; i < 16; i++) tag[i] = s[i] ^ mask[i];
+    if (decrypt) {
+      let diff = 0;
+      for (let i = 0; i < 16; i++) diff |= tag[i] ^ data[data.length - tagLen + i];
+      if (diff) throw new Error("GCM authentication failed — wrong key/IV or tampered ciphertext");
+      return body;
+    }
+    return joinBytes(body, tag);
+  }
+
+  /* stream + classical ciphers */
+  function rc4Crypt(key, data) {
+    const s = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) s[i] = i;
+    for (let i = 0, j = 0; i < 256; i++) {
+      j = (j + s[i] + key[i % key.length]) & 255;
+      const t = s[i]; s[i] = s[j]; s[j] = t;
+    }
+    const out = new Uint8Array(data.length);
+    for (let n = 0, i = 0, j = 0; n < data.length; n++) {
+      i = (i + 1) & 255;
+      j = (j + s[i]) & 255;
+      const t = s[i]; s[i] = s[j]; s[j] = t;
+      out[n] = data[n] ^ s[(s[i] + s[j]) & 255];
+    }
+    return out;
+  }
+  function xorCrypt(key, data) {
+    const out = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) out[i] = data[i] ^ key[i % key.length];
+    return out;
+  }
+  function caesarCrypt(data, shift, decrypt) {
+    const s = (((decrypt ? -shift : shift) % 26) + 26) % 26;
+    const out = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) {
+      const c = data[i];
+      if (c >= 65 && c <= 90) out[i] = 65 + ((c - 65 + s) % 26);
+      else if (c >= 97 && c <= 122) out[i] = 97 + ((c - 97 + s) % 26);
+      else out[i] = c;
+    }
+    return out;
+  }
+  function vigenereCrypt(data, key, decrypt) {
+    const shifts = [];
+    for (const b of key || []) {
+      const c = b >= 97 && b <= 122 ? b - 32 : b;
+      if (c >= 65 && c <= 90) shifts.push(c - 65);
+    }
+    if (!shifts.length) throw new Error("Vigenère key needs at least one letter A-Z");
+    const out = new Uint8Array(data.length);
+    for (let i = 0, k = 0; i < data.length; i++) {
+      const c = data[i], s = shifts[k % shifts.length] * (decrypt ? -1 : 1);
+      if (c >= 65 && c <= 90) { out[i] = 65 + (((c - 65 + s) % 26) + 26) % 26; k++; }
+      else if (c >= 97 && c <= 122) { out[i] = 97 + (((c - 97 + s) % 26) + 26) % 26; k++; }
+      else out[i] = c;
+    }
+    return out;
+  }
+
+  const CIPHERS = {
+    aes: { block: 16, keys: [16, 24, 32], modes: ["cbc", "ecb", "ctr", "gcm"], iv: { cbc: 16, ctr: 16, gcm: 12 }, pad: true, max: 1 << 18 },
+    sm4: { block: 16, keys: [16], modes: ["cbc", "ecb", "ctr"], iv: { cbc: 16, ctr: 16 }, pad: true, max: 1 << 18 },
+    des: { block: 8, keys: [8], modes: ["cbc", "ecb"], iv: { cbc: 8 }, pad: true, max: 1 << 16 },
+    "3des": { block: 8, keys: [16, 24], modes: ["cbc", "ecb"], iv: { cbc: 8 }, pad: true, max: 1 << 16 },
+    rc4: { stream: true, modes: [], max: 1 << 18 },
+    xor: { stream: true, modes: [], max: 1 << 18 },
+    rot13: { classical: true, modes: [] },
+    caesar: { classical: true, modes: [], shift: true },
+    vigenere: { classical: true, modes: [] },
+  };
+
+  function crypt(opts) {
+    const { dir, alg, key, iv, data, padding = "pkcs7", shift = 0 } = opts;
+    const spec = CIPHERS[alg];
+    if (!spec) throw new Error("unsupported cipher: " + alg);
+    const decrypt = dir === "decrypt";
+    if (spec.classical) {
+      if (alg === "rot13") return caesarCrypt(data, 13, false);
+      if (alg === "caesar") return caesarCrypt(data, Number(shift) || 0, decrypt);
+      return vigenereCrypt(data, key, decrypt);
+    }
+    if (data.length > spec.max) throw new Error(`input too large: ${data.length} bytes (limit ${spec.max} for ${alg})`);
+    if (spec.stream) {
+      if (!key || !key.length) throw new Error(alg.toUpperCase() + " needs a non-empty key");
+      if (key.length > 256) throw new Error("key too long: maximum 256 bytes");
+      return alg === "rc4" ? rc4Crypt(key, data) : xorCrypt(key, data);
+    }
+    if (!key || !spec.keys.includes(key.length)) throw new Error(`${alg.toUpperCase()} key must be ${spec.keys.join(" / ")} bytes (got ${key ? key.length : 0})`);
+    const mode = opts.mode || spec.modes[0];
+    if (!spec.modes.includes(mode)) throw new Error(`${alg.toUpperCase()} does not support mode ${mode}`);
+    const bs = spec.block;
+    let blockFn;
+    if (alg === "aes") { const exp = aesKey(key); blockFn = (b, d) => aesBlock(b, exp, d); }
+    else if (alg === "sm4") { const rk = sm4Keys(key); blockFn = (b, d) => sm4Block(b, rk, d); }
+    else if (alg === "des") { const ks = desKeys(key); blockFn = (b, d) => desBlock(b, ks, d); }
+    else {
+      const k24 = key.length === 16 ? joinBytes(key, key.subarray(0, 8)) : key;
+      const k1 = desKeys(k24.subarray(0, 8)), k2 = desKeys(k24.subarray(8, 16)), k3 = desKeys(k24.subarray(16, 24));
+      blockFn = (b, d) => des3Block(b, k1, k2, k3, d);
+    }
+    blockFn.size = bs;
+    if (mode === "gcm") {
+      if (!iv || !iv.length) throw new Error("GCM needs a nonce/IV (12 bytes recommended)");
+      return gcmCrypt(blockFn, iv, data, decrypt);
+    }
+    if (mode === "ctr") {
+      if (!iv || iv.length !== bs) throw new Error(`CTR needs a ${bs}-byte IV/counter (got ${iv ? iv.length : 0})`);
+      return ctrCrypt(blockFn, iv, data);
+    }
+    if (mode === "cbc" && (!iv || iv.length !== bs)) throw new Error(`CBC needs a ${bs}-byte IV (got ${iv ? iv.length : 0})`);
+    const run = (buf, dec) => (mode === "cbc" ? cbcCrypt(blockFn, iv, buf, dec) : ecbCrypt(blockFn, buf, dec));
+    if (decrypt) {
+      if (data.length % bs) throw new Error(`ciphertext length must be a multiple of ${bs} bytes (got ${data.length})`);
+      return unpadData(run(data, true), bs, padding);
+    }
+    return run(padData(data, bs, padding), false);
+  }
+
+  const crypto = {
+    algorithms: Object.keys(CIPHERS),
+    spec: (alg) => CIPHERS[alg] || null,
+    crypt,
+    randomKey: (alg, size) => {
+      const s = CIPHERS[alg];
+      if (!s || s.classical) throw new Error("no random key for " + alg);
+      const n = size || (s.keys ? s.keys[s.keys.length - 1] : 16);
+      if (s.keys && !s.keys.includes(n)) throw new Error("invalid key size for " + alg);
+      return randBytes(n);
+    },
+    randomIv: (alg, mode) => {
+      const s = CIPHERS[alg];
+      const n = s && s.iv ? s.iv[mode || s.modes[0]] : 0;
+      if (!n) throw new Error("no IV for " + alg + " " + mode);
+      return randBytes(n);
+    },
+  };
+
   /* ---------- export ---------- */
 
-  const Toolbox = { util: { hexOf, fromHex, bytesOf }, hash, base64, url, unicode, ts, password, json, ids, jwt, cron, regex };
+  const Toolbox = { util: { hexOf, fromHex, bytesOf }, hash, base64, url, unicode, ts, password, json, ids, jwt, cron, regex, crypto };
   if (typeof module !== "undefined" && module.exports) module.exports = Toolbox;
   else root.DevToolbox = Toolbox;
 })(typeof globalThis !== "undefined" ? globalThis : this);

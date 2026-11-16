@@ -256,5 +256,166 @@ for (const [p, f] of [["(", ""], ["[z-a]", ""], ["a{2,1}", ""], ["(?<n>a)(?<n>b)
 }
 ok("regex subject cap", !T.regex.test("a", "", "x".repeat(100001)).ok);
 
+/* crypto: known vectors + differential tests against node:crypto (OpenSSL) */
+const H = (s) => T.util.fromHex(s);
+let seed = 20261116;
+const rnd = (n) => {
+  const b = Buffer.alloc(n);
+  for (let i = 0; i < n; i++) { seed = (seed * 1103515245 + 12345) & 0x7fffffff; b[i] = (seed >>> 16) & 255; }
+  return b;
+};
+const nodeEnc = (name, key, iv, data, autoPad = true) => {
+  const gcm = name.endsWith("gcm");
+  const c = crypto.createCipheriv(name, key, iv);
+  if (!gcm) c.setAutoPadding(autoPad);
+  const out = Buffer.concat([c.update(data), c.final()]);
+  return gcm ? Buffer.concat([out, c.getAuthTag()]) : out;
+};
+const nodeDec = (name, key, iv, data, autoPad = true) => {
+  const gcm = name.endsWith("gcm");
+  const c = crypto.createDecipheriv(name, key, iv);
+  if (gcm) c.setAuthTag(data.subarray(data.length - 16));
+  else c.setAutoPadding(autoPad);
+  return Buffer.concat([c.update(gcm ? data.subarray(0, data.length - 16) : data), c.final()]);
+};
+const ours = (dir, alg, mode, key, iv, data, padding = "pkcs7") =>
+  T.crypto.crypt({ dir, alg, mode, key, iv, data, padding });
+
+/* FIPS-197 / GB-T 32907-2016 single-block vectors */
+eq("aes-128 fips197", hex(ours("encrypt", "aes", "ecb", H("000102030405060708090a0b0c0d0e0f"), null, H("00112233445566778899aabbccddeeff"), "none")), "69c4e0d86a7b0430d8cdb78070b4c55a");
+eq("aes-192 fips197", hex(ours("encrypt", "aes", "ecb", H("000102030405060708090a0b0c0d0e0f1011121314151617"), null, H("00112233445566778899aabbccddeeff"), "none")), "dda97ca4864cdfe06eaf70a0ec0d7191");
+eq("aes-256 fips197", hex(ours("encrypt", "aes", "ecb", H("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"), null, H("00112233445566778899aabbccddeeff"), "none")), "8ea2b7ca516745bfeafc49904b496089");
+eq("aes-128 fips197 inverse", hex(ours("decrypt", "aes", "ecb", H("000102030405060708090a0b0c0d0e0f"), null, H("69c4e0d86a7b0430d8cdb78070b4c55a"), "none")), "00112233445566778899aabbccddeeff");
+eq("sm4 gbt32907", hex(ours("encrypt", "sm4", "ecb", H("0123456789abcdeffedcba9876543210"), null, H("0123456789abcdeffedcba9876543210"), "none")), "681edf34d206965e86b3e94f536e4246");
+eq("sm4 gbt32907 inverse", hex(ours("decrypt", "sm4", "ecb", H("0123456789abcdeffedcba9876543210"), null, H("681edf34d206965e86b3e94f536e4246"), "none")), "0123456789abcdeffedcba9876543210");
+
+/* AES / SM4 / DES / 3DES vs OpenSSL, pkcs7 + none */
+function refName(alg, mode, key) {
+  if (alg === "aes") return { name: `aes-${key.length * 8}-${mode}`, key };
+  if (alg === "sm4") return { name: `sm4-${mode}`, key };
+  const k = alg === "des" ? Buffer.concat([key, key, key]) : key.length === 16 ? Buffer.concat([key, key.subarray(0, 8)]) : key;
+  return { name: mode === "ecb" ? "des-ede3" : `des-ede3-${mode}`, key: k };
+}
+const MATRIX = [
+  ["aes", [16, 24, 32], ["cbc", "ecb", "ctr"], [0, 1, 15, 16, 17, 64, 1000]],
+  ["sm4", [16], ["cbc", "ecb", "ctr"], [0, 1, 15, 16, 17, 64]],
+  ["des", [8], ["cbc", "ecb"], [0, 1, 7, 8, 9, 31]],
+  ["3des", [16, 24], ["cbc", "ecb"], [0, 1, 7, 8, 9, 31]],
+];
+for (const [alg, keySizes, modes, lens] of MATRIX) {
+  for (const ks of keySizes) for (const mode of modes) for (const len of lens) {
+    const key = rnd(ks), data = rnd(len);
+    const spec = T.crypto.spec(alg);
+    const iv = mode === "ecb" ? null : rnd(spec.iv[mode]);
+    const ref = refName(alg, mode, key);
+    for (const padding of mode === "ctr" ? ["pkcs7"] : ["pkcs7", "none"]) {
+      if (padding === "none" && len % spec.block) continue;
+      const tag = `${alg}-${ks * 8}-${mode}-${padding}-${len}`;
+      const want = nodeEnc(ref.name, ref.key, iv, data, padding === "pkcs7");
+      const got = ours("encrypt", alg, mode, key, iv, data, padding);
+      eq("enc " + tag, hex(got), hex(want));
+      eq("dec " + tag, hex(ours("decrypt", alg, mode, key, iv, got, padding)), hex(data));
+      eq("dec-node " + tag, hex(nodeDec(ref.name, ref.key, iv, got, padding === "pkcs7")), hex(data));
+    }
+  }
+}
+
+/* AES-GCM: ciphertext||tag, several nonce lengths, empty AAD */
+for (const ks of [16, 24, 32]) for (const ivLen of [12, 8, 16, 20]) for (const len of [0, 1, 16, 60, 1000]) {
+  const key = rnd(ks), iv = rnd(ivLen), data = rnd(len);
+  const name = `aes-${ks * 8}-gcm`;
+  const tag = `gcm-${ks * 8}-iv${ivLen}-${len}`;
+  const want = nodeEnc(name, key, iv, data);
+  const got = ours("encrypt", "aes", "gcm", key, iv, data);
+  eq("enc " + tag, hex(got), hex(want));
+  eq("dec " + tag, hex(ours("decrypt", "aes", "gcm", key, iv, got)), hex(data));
+  eq("dec-node " + tag, hex(nodeDec(name, key, iv, got)), hex(data));
+}
+{
+  const key = rnd(16), iv = rnd(12), data = B("attack at dawn");
+  const ct = ours("encrypt", "aes", "gcm", key, iv, data);
+  const bad = Uint8Array.from(ct); bad[3] ^= 1;
+  throws("gcm tampered ciphertext", () => ours("decrypt", "aes", "gcm", key, iv, bad));
+  throws("gcm wrong key", () => ours("decrypt", "aes", "gcm", rnd(16), iv, ct));
+  throws("gcm wrong iv", () => ours("decrypt", "aes", "gcm", key, rnd(12), ct));
+  throws("gcm short input", () => ours("decrypt", "aes", "gcm", key, iv, ct.subarray(0, 8)));
+  let err = "";
+  try { ours("decrypt", "aes", "gcm", key, iv, bad); } catch (e) { err = e.message; }
+  ok("gcm auth message", /authentication/.test(err), err);
+}
+
+/* zero padding interoperates with raw OpenSSL (no auto padding) */
+for (const alg of ["aes", "sm4", "3des"]) {
+  const spec = T.crypto.spec(alg);
+  const key = rnd(spec.keys[spec.keys.length - 1]), iv = rnd(spec.block), data = B("zero padded");
+  const padded = Buffer.alloc(Math.ceil(data.length / spec.block) * spec.block);
+  padded.set(data);
+  const ref = refName(alg, "cbc", key);
+  eq(`zero pad ${alg}`, hex(ours("encrypt", alg, "cbc", key, iv, data, "zero")), hex(nodeEnc(ref.name, ref.key, iv, padded, false)));
+  eq(`zero unpad ${alg}`, Buffer.from(ours("decrypt", alg, "cbc", key, iv, ours("encrypt", alg, "cbc", key, iv, data, "zero"), "zero")).toString(), "zero padded");
+}
+
+/* RC4 / XOR / classical */
+eq("rc4 Key/Plaintext", hex(ours("encrypt", "rc4", "", B("Key"), null, B("Plaintext"))), "bbf316e8d940af0ad3");
+eq("rc4 Wiki/pedia", hex(ours("encrypt", "rc4", "", B("Wiki"), null, B("pedia"))), "1021bf0420");
+eq("rc4 Secret/Attack at dawn", hex(ours("encrypt", "rc4", "", B("Secret"), null, B("Attack at dawn"))), "45a01f645fc35b383552544b9bf5");
+eq("rc4 decrypt", Buffer.from(ours("decrypt", "rc4", "", B("Key"), null, H("bbf316e8d940af0ad3"))).toString(), "Plaintext");
+eq("xor bytes", hex(ours("encrypt", "xor", "", H("0102"), null, B("abc"))), hex(Buffer.from([0x61 ^ 1, 0x62 ^ 2, 0x63 ^ 1])));
+eq("xor round trip", Buffer.from(ours("decrypt", "xor", "", B("密钥 key"), null, ours("encrypt", "xor", "", B("密钥 key"), null, B("hello 世界")))).toString(), "hello 世界");
+eq("caesar 3", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: 3, data: B("Hello, World!") })).toString(), "Khoor, Zruog!");
+eq("caesar decrypt", Buffer.from(T.crypto.crypt({ dir: "decrypt", alg: "caesar", shift: 3, data: B("Khoor, Zruog!") })).toString(), "Hello, World!");
+eq("caesar 26 identity", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: 26, data: B("abc XYZ") })).toString(), "abc XYZ");
+eq("caesar negative", Buffer.from(T.crypto.crypt({ dir: "encrypt", alg: "caesar", shift: -1, data: B("abc") })).toString(), "zab");
+eq("rot13", Buffer.from(ours("encrypt", "rot13", "", null, null, B("Hello, World!"))).toString(), "Uryyb, Jbeyq!");
+eq("rot13 self-inverse", Buffer.from(ours("encrypt", "rot13", "", null, null, B("Uryyb, Jbeyq!"))).toString(), "Hello, World!");
+eq("vigenere LEMON", Buffer.from(ours("encrypt", "vigenere", "", B("LEMON"), null, B("ATTACKATDAWN"))).toString(), "LXFOPVEFRNHR");
+eq("vigenere decrypt", Buffer.from(ours("decrypt", "vigenere", "", B("LEMON"), null, B("LXFOPVEFRNHR"))).toString(), "ATTACKATDAWN");
+eq("vigenere keeps non-letters", Buffer.from(ours("encrypt", "vigenere", "", B("LEMON"), null, B("ATTACK AT DAWN"))).toString(), "LXFOPV EF RNHR");
+eq("vigenere lowercase key", Buffer.from(ours("encrypt", "vigenere", "", B("lemon"), null, B("attackatdawn"))).toString(), "lxfopvefrnhr");
+
+/* UTF-8 payloads and random-key helpers */
+for (const alg of ["aes", "sm4", "3des", "rc4"]) {
+  const spec = T.crypto.spec(alg);
+  const key = T.crypto.randomKey(alg);
+  const mode = spec.modes[0] || "";
+  const iv = mode === "ecb" || !mode ? null : T.crypto.randomIv(alg, mode);
+  const text = "混合 text 😀 — 1234567890";
+  const ct = ours("encrypt", alg, mode, key, iv, B(text));
+  eq(`utf8 round trip ${alg}`, Buffer.from(ours("decrypt", alg, mode, key, iv, ct)).toString(), text);
+  ok(`randomKey ${alg}`, !spec.keys || spec.keys.includes(key.length));
+  if (iv) ok(`randomIv ${alg}`, iv.length === spec.iv[mode]);
+}
+eq("aes-256 random key size", T.crypto.randomKey("aes").length, 32);
+eq("gcm random iv size", T.crypto.randomIv("aes", "gcm").length, 12);
+
+/* option validation */
+throws("aes bad key size", () => ours("encrypt", "aes", "cbc", rnd(15), rnd(16), B("x")));
+throws("aes missing key", () => T.crypto.crypt({ dir: "encrypt", alg: "aes", mode: "cbc", data: B("x") }));
+throws("cbc bad iv", () => ours("encrypt", "aes", "cbc", rnd(16), rnd(15), B("x")));
+throws("ctr missing iv", () => T.crypto.crypt({ dir: "encrypt", alg: "aes", mode: "ctr", key: rnd(16), data: B("x") }));
+throws("gcm missing iv", () => T.crypto.crypt({ dir: "encrypt", alg: "aes", mode: "gcm", key: rnd(16), data: B("x") }));
+throws("unsupported mode", () => ours("encrypt", "aes", "cfb", rnd(16), rnd(16), B("x")));
+throws("unsupported alg", () => T.crypto.crypt({ dir: "encrypt", alg: "rsa", data: B("x") }));
+throws("none padding ragged", () => ours("encrypt", "aes", "ecb", rnd(16), null, rnd(15), "none"));
+throws("ragged ciphertext", () => ours("decrypt", "aes", "cbc", rnd(16), rnd(16), rnd(15)));
+throws("rc4 empty key", () => T.crypto.crypt({ dir: "encrypt", alg: "rc4", key: new Uint8Array(0), data: B("x") }));
+throws("rc4 long key", () => T.crypto.crypt({ dir: "encrypt", alg: "rc4", key: rnd(257), data: B("x") }));
+throws("vigenere numeric key", () => ours("encrypt", "vigenere", "", B("123"), null, B("abc")));
+throws("des input cap", () => ours("encrypt", "des", "ecb", rnd(8), null, rnd((1 << 16) + 1)));
+throws("aes input cap", () => ours("encrypt", "aes", "ctr", rnd(16), rnd(16), rnd((1 << 18) + 1)));
+{
+  const k = H("000102030405060708090a0b0c0d0e0f");
+  const ct = ours("encrypt", "aes", "ecb", k, null, new Uint8Array(16), "none");
+  throws("bad padding byte", () => ours("decrypt", "aes", "ecb", k, null, ct));
+}
+{
+  const key = rnd(16), iv = rnd(16);
+  const ct = ours("encrypt", "aes", "cbc", key, iv, B("hello world"));
+  const other = rnd(16);
+  let threw = false, plain = null;
+  try { plain = Buffer.from(ours("decrypt", "aes", "cbc", other, iv, ct)).toString(); } catch { threw = true; }
+  ok("wrong key rejected", threw || plain !== "hello world", plain);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

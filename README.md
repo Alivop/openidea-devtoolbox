@@ -19,7 +19,7 @@ OpenIDEA 插件：右侧工具窗里的十二个日常开发小工具。
 | JWT | JWT 解析/生成 | parse claims with expiry status; sign & verify HS256/384/512 |
 | Cron | Cron 表达式 | 5/6-field parse, next run times, plain-language description |
 | Regex | 正则测试 | live match highlighting, group table, replace; budgeted local matcher (no catastrophic hangs) |
-| Hash | 哈希 | MD5, SHA-1, SHA-256, SHA-384, SHA-512 (text or hex input) |
+| Hash | 哈希 | MD5, SHA-1/256/384/512 and SM3 (国密); digest or HMAC, UTF-8 text in, hex out |
 | Crypto | 加解密 | AES/SM4/DES/3DES (CBC/ECB/CTR/GCM), RC4, XOR, ROT13/Caesar/Vigenère; PKCS7 or zero padding, text/hex/Base64 I/O |
 
 ## Privacy / 隐私
@@ -37,7 +37,10 @@ The only capability requested is `clipboard` (copy buttons).
 
 界面是包内 web 视图（`web/index.html`），运行在 IDE 沙箱框架中： opaque origin、
 **禁止网络**、无 cookie 与存储。全部计算在页面自有 JavaScript 内完成；随机数来自
-`crypto.getRandomValues`；JWT 签名使用本地 HMAC-SHA2 实现。唯一申请的能力是
+`crypto.getRandomValues`；JWT 签名使用本地 HMAC-SHA2 实现。正则匹配跑在带步数预算的
+回溯虚拟机上（沙箱 CSP 禁用 Workers），灾难性回溯会报错而不是卡死 IDE。哈希与加解密
+同样在页面内实现（不依赖 WebCrypto，因此框架非安全上下文时也能用）；密钥与明文不会离开
+视图。GCM 输出为密文后接 16 字节认证标签，解密时会校验。唯一申请的能力是
 `clipboard`（复制按钮）。
 
 No WebAssembly component is needed: the manifest declares a `web` view only.

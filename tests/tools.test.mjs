@@ -27,7 +27,11 @@ eq("sha256 abc", hex(T.hash.digest("sha-256", B("abc"))), "ba7816bf8f01cfea41414
 eq("sha512 abc", hex(T.hash.digest("sha-512", B("abc"))), "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f");
 eq("sha384 abc", hex(T.hash.digest("sha-384", B("abc"))), "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7");
 eq("sha256 empty", hex(T.hash.digest("sha-256", B(""))), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
-for (const alg of ["md5", "sha-1", "sha-256", "sha-384", "sha-512"]) {
+/* SM3 GB/T 32905-2016 standard vectors */
+eq("sm3 abc", hex(T.hash.digest("sm3", B("abc"))), "66c7f0f462eeedd9d1f2d46bdc10e4e24167c4875cf2f7a2297da02b8f4ba8e0");
+eq("sm3 abcd x16", hex(T.hash.digest("sm3", B("abcd".repeat(16)))), "debe9ff92275b8a138604889c18e5a4d6fdb70e5387e5765293dcba39c0c5732");
+eq("sm3 empty", hex(T.hash.digest("sm3", B(""))), "1ab21d8355cfa17f8e61194831e81a8f22bec8c728fefb747ed035eb5082aa2b");
+for (const alg of ["md5", "sha-1", "sha-256", "sha-384", "sha-512", "sm3"]) {
   for (const len of [0, 1, 55, 56, 63, 64, 65, 119, 120, 127, 128, 1000]) {
     const data = crypto.randomBytes(len);
     const nodeAlg = alg === "sha-1" ? "sha1" : alg.replace("-", "");
@@ -36,7 +40,7 @@ for (const alg of ["md5", "sha-1", "sha-256", "sha-384", "sha-512"]) {
 }
 /* hmac vs node crypto (oracle) + RFC 4231 case 2 */
 eq("hmac-sha256 RFC4231 tc2", hex(T.hash.hmac("sha-256", B("Jefe"), B("what do ya want for nothing?"))), "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843");
-for (const alg of ["md5", "sha-1", "sha-256", "sha-384", "sha-512"]) {
+for (const alg of ["md5", "sha-1", "sha-256", "sha-384", "sha-512", "sm3"]) {
   for (const keyLen of [0, 10, 64, 65, 128, 200]) {
     const key = crypto.randomBytes(keyLen), msg = crypto.randomBytes(300);
     const nodeAlg = alg === "sha-1" ? "sha1" : alg.replace("-", "");

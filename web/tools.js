@@ -204,12 +204,48 @@
     return out;
   }
 
+  /* SM3 — GB/T 32905-2016 */
+  const HSM3 = [0x7380166f, 0x4914b2b9, 0x172442d7, 0xda8a0600, 0xa96f30bc, 0x163138aa, 0xe38dee4d, 0xb0fb0e4e];
+  function sm3(msg) {
+    const data = padBE(msg, 8);
+    const h = HSM3.slice();
+    const w = new Int32Array(68);
+    const wp = new Int32Array(64);
+    for (let off = 0; off < data.length; off += 64) {
+      for (let i = 0; i < 16; i++) w[i] = (data[off + i * 4] << 24) | (data[off + i * 4 + 1] << 16) | (data[off + i * 4 + 2] << 8) | data[off + i * 4 + 3];
+      for (let i = 16; i < 68; i++) {
+        const x = (w[i - 16] ^ w[i - 9] ^ rotl32(w[i - 3], 15)) | 0;
+        w[i] = (x ^ rotl32(x, 15) ^ rotl32(x, 23) ^ rotl32(w[i - 13], 7) ^ w[i - 6]) | 0;
+      }
+      for (let i = 0; i < 64; i++) wp[i] = (w[i] ^ w[i + 4]) | 0;
+      let [a, b, c, d, e, f, g, hh] = h;
+      for (let i = 0; i < 64; i++) {
+        const lo = i < 16;
+        const a12 = rotl32(a, 12);
+        const ss1 = rotl32((a12 + e + rotl32(lo ? 0x79cc4519 : 0x7a879d8a, i % 32)) | 0, 7);
+        const ss2 = (ss1 ^ a12) | 0;
+        const ff = lo ? (a ^ b ^ c) : ((a & b) | (a & c) | (b & c));
+        const gg = lo ? (e ^ f ^ g) : ((e & f) | (~e & g));
+        const tt1 = (ff + d + ss2 + wp[i]) | 0;
+        const tt2 = (gg + hh + ss1 + w[i]) | 0;
+        d = c; c = rotl32(b, 9); b = a; a = tt1;
+        hh = g; g = rotl32(f, 19); f = e; e = (tt2 ^ rotl32(tt2, 9) ^ rotl32(tt2, 17)) | 0;
+      }
+      h[0] ^= a; h[1] ^= b; h[2] ^= c; h[3] ^= d;
+      h[4] ^= e; h[5] ^= f; h[6] ^= g; h[7] ^= hh;
+    }
+    const out = new Uint8Array(32);
+    h.forEach((x, i) => { out[i * 4] = x >>> 24; out[i * 4 + 1] = x >>> 16; out[i * 4 + 2] = x >>> 8; out[i * 4 + 3] = x; });
+    return out;
+  }
+
   const HASHES = {
     md5: { fn: md5, block: 64 },
     "sha-1": { fn: sha1, block: 64 },
     "sha-256": { fn: sha256, block: 64 },
     "sha-384": { fn: sha384, block: 128 },
     "sha-512": { fn: sha512, block: 128 },
+    sm3: { fn: sm3, block: 64 },
   };
   function hmac(alg, key, msg) {
     const h = HASHES[alg];

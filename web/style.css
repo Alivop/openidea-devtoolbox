@@ -74,7 +74,7 @@ h1 { font-size: 1.05em; margin: 0; color: var(--openidea-fg-strong, var(--tb-fg)
 .checks { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .checks label, .row label { display: inline-flex; align-items: center; gap: 4px; }
 
-input[type="text"], input[type="number"], select, textarea {
+input[type="text"], input[type="number"], textarea {
   background: var(--openidea-bg-input, var(--tb-input));
   color: var(--openidea-fg, var(--tb-fg));
   border: 1px solid var(--openidea-border, var(--tb-border));
@@ -110,6 +110,23 @@ button.ghost {
   border-color: var(--openidea-border, var(--tb-border));
 }
 button.ghost:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filter: none; }
+/* Native select chrome (macOS popup look) clashes with the flat buttons:
+   draw our own chevron instead, light/dark via data-theme (the IDE sets it too). */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--openidea-bg-elevated, var(--tb-elev)) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 8px center;
+  color: var(--openidea-fg, var(--tb-fg));
+  border: 1px solid var(--openidea-border, var(--tb-border));
+  border-radius: 6px;
+  padding: 5px 24px 5px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+:root[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2398a2b3' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+select:hover { background-color: var(--openidea-bg-hover, var(--tb-hover)); }
 button.copy { padding: 2px 8px; font-size: 0.85em; background: var(--openidea-bg-elevated, var(--tb-elev)); color: var(--openidea-fg-muted, var(--tb-muted)); border-color: var(--openidea-border, var(--tb-border)); }
 button.copy:hover { background: var(--openidea-bg-hover, var(--tb-hover)); filter: none; }
 

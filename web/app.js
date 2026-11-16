@@ -10,7 +10,7 @@
       "tool.ts": "Timestamp", "tool.password": "Password", "tool.json": "JSON", "tool.ids": "IDs",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
       "tool.cron": "Cron", "tool.hash": "Hash", "tool.regex": "Regex", "tool.crypto": "Crypto",
-      now: "Now", convert: "Convert", copy: "Copy", generate: "Generate", format: "Format",
+      now: "Now", convert: "Convert", copy: "Copy", clear: "Clear", generate: "Generate", format: "Format",
       minify: "Minify", encode: "Encode", decode: "Decode", escape: "Escape", unescape: "Unescape",
       parse: "Parse", verify: "Verify", sign: "Sign", preview: "Preview", compute: "Compute",
       copied: "Copied", copyFail: "Copy failed — select the text and press ⌘/Ctrl+C",
@@ -55,7 +55,7 @@
       "tool.ts": "时间戳", "tool.password": "密码", "tool.json": "JSON", "tool.ids": "ID",
       "tool.base64": "Base64", "tool.url": "URL", "tool.unicode": "Unicode", "tool.jwt": "JWT",
       "tool.cron": "Cron", "tool.hash": "哈希", "tool.regex": "正则", "tool.crypto": "加解密",
-      now: "现在", convert: "转换", copy: "复制", generate: "生成", format: "格式化",
+      now: "现在", convert: "转换", copy: "复制", clear: "清空", generate: "生成", format: "格式化",
       minify: "压缩", encode: "编码", decode: "解码", escape: "转义", unescape: "反转义",
       parse: "解析", verify: "验证", sign: "签名", preview: "预览", compute: "计算",
       copied: "已复制", copyFail: "复制失败，请选中文字后按 ⌘/Ctrl+C",
@@ -695,4 +695,37 @@
   $("langBtn").addEventListener("click", () => { lang = lang === "zh" ? "en" : "zh"; applyStatic(); });
   applyStatic();
   idTypeChanged();
+
+  /* ---------- clear: restore a panel to its initial state ---------- */
+  const clearHooks = {
+    password: () => { pwBits = null; pwCount = 1; $("pwOut").rows = 3; },
+    json: () => { jsonLastMinify = false; },
+    ids: () => { sfLast = false; idTypeChanged(); },
+    base64: () => { b64LastDec = false; },
+    url: () => { urlLastDec = false; },
+    unicode: () => { uniLastUnesc = false; },
+    jwt: () => { jwtVerified = false; $("jwtVerifyOut").className = "hint"; },
+    hash: () => { $("hashKeyRow").hidden = $("hashMode").value !== "hmac"; },
+    regex: () => { clearTimeout(reTimer); $("reTable").hidden = true; $("reTrunc").hidden = true; },
+    crypto: () => { crLastDir = ""; crSync(); },
+  };
+  const clearHidden = [...document.querySelectorAll(".panel")].map((p) => [p, [...p.querySelectorAll("[hidden]")]]);
+  document.addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-clear]");
+    if (!btn) return;
+    const panel = btn.closest(".panel");
+    for (const el of panel.querySelectorAll("input, textarea, select")) {
+      if (el.type === "checkbox") el.checked = el.defaultChecked;
+      else if (el.tagName === "SELECT") {
+        const i = [...el.options].findIndex((o) => o.defaultSelected);
+        el.selectedIndex = i < 0 ? 0 : i;
+      } else el.value = el.defaultValue;
+    }
+    for (const el of panel.querySelectorAll(".error, .hint, .re-hl, code, pre, ol, tbody, #jwtTimes")) {
+      if (!el.hasAttribute("data-i18n")) el.textContent = "";
+    }
+    for (const [p, els] of clearHidden) if (p === panel) for (const el of els) el.hidden = true;
+    const hook = clearHooks[panel.id.replace("panel-", "")];
+    if (hook) hook();
+  });
 })();

@@ -22,6 +22,9 @@ OpenIDEA 插件：右侧工具窗里的十二个日常开发小工具。
 | Hash | 哈希 | MD5, SHA-1/256/384/512 and SM3 (国密); digest or HMAC, UTF-8 text in, hex out |
 | Crypto | 加解密 | AES/SM4/DES/3DES (CBC/ECB/CTR/GCM), RC4, XOR; PKCS7 or zero padding, text/hex/Base64 I/O |
 
+Every panel has **Clear** (reset inputs, options and results) beside **Copy**.
+每个面板都有**清空**（重置输入、选项与结果）和**复制**按钮。
+
 ## Privacy / 隐私
 
 The UI is a packaged web view (`web/index.html`) loaded in the IDE's sandboxed

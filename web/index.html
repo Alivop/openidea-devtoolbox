@@ -46,6 +46,7 @@
     <div class="kv"><span>ISO 8601</span><code id="tsIso"></code><button class="copy" type="button" data-copy="tsIso" data-i18n="copy">Copy</button></div>
     <div class="kv"><span data-i18n="ts.seconds">Seconds</span><code id="tsSec"></code><button class="copy" type="button" data-copy="tsSec" data-i18n="copy">Copy</button></div>
     <div class="kv"><span data-i18n="ts.milliseconds">Milliseconds</span><code id="tsMs"></code><button class="copy" type="button" data-copy="tsMs" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button></div>
   </section>
 
   <!-- password -->
@@ -68,7 +69,10 @@
     <textarea id="pwOut" rows="3" readonly spellcheck="false"></textarea>
     <div class="row between">
       <span class="hint" id="pwEntropy"></span>
-      <button class="copy" type="button" data-copy="pwOut" data-i18n="copy">Copy</button>
+      <span class="row">
+        <button class="copy" type="button" data-clear data-i18n="clear">Clear</button>
+        <button class="copy" type="button" data-copy="pwOut" data-i18n="copy">Copy</button>
+      </span>
     </div>
   </section>
 
@@ -89,7 +93,7 @@
     </div>
     <div class="error" id="jsonErr"></div>
     <textarea id="jsonOut" rows="10" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="jsonOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="jsonOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- ids -->
@@ -117,7 +121,7 @@
       <input id="idEpoch" type="text" value="1288834974657" class="wide">
     </div>
     <textarea id="idOut" rows="6" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="idOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="idOut" data-i18n="copy">Copy</button></div>
     <div id="sfDecodeBox" hidden>
       <div class="row">
         <input id="sfInput" type="text" data-i18n-ph="ids.decodePh" placeholder="Snowflake ID to decode">
@@ -140,7 +144,7 @@
     <div class="error" id="b64Err"></div>
     <textarea id="b64Out" rows="5" readonly spellcheck="false"></textarea>
     <div class="hint mono" id="b64Hex"></div>
-    <div class="row end"><button class="copy" type="button" data-copy="b64Out" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="b64Out" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- url -->
@@ -157,7 +161,7 @@
     </div>
     <div class="error" id="urlErr"></div>
     <textarea id="urlOut" rows="4" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="urlOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="urlOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- unicode -->
@@ -174,7 +178,7 @@
     </div>
     <div class="error" id="uniErr"></div>
     <textarea id="uniOut" rows="4" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="uniOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="uniOut" data-i18n="copy">Copy</button></div>
     <table id="uniTable" hidden>
       <thead><tr><th data-i18n="uni.ch">Char</th><th>CP</th><th>Dec</th><th>UTF-8</th><th>UTF-16</th></tr></thead>
       <tbody></tbody>
@@ -211,7 +215,7 @@
     </div>
     <div class="error" id="jwtSignErr"></div>
     <textarea id="jwtSignOut" rows="3" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="jwtSignOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="jwtSignOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- cron -->
@@ -226,6 +230,7 @@
     <div class="lbl" data-i18n="cron.next">Next runs (local time)</div>
     <ol id="cronRuns" class="mono"></ol>
     <div class="hint warn" id="cronTrunc" hidden data-i18n="cron.trunc">No further runs within the next 4 years</div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button></div>
   </section>
 
   <!-- regex -->
@@ -254,7 +259,7 @@
       <input id="reRepl" type="text" class="wide mono" value="$1 at $2" data-i18n-ph="re.replacePh" placeholder="replacement ($1, $<name>, $&)">
     </div>
     <textarea id="reReplOut" rows="3" readonly spellcheck="false"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="reReplOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="reReplOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- hash -->
@@ -280,7 +285,7 @@
     </div>
     <div class="error" id="hashErr"></div>
     <textarea id="hashOut" rows="2" readonly spellcheck="false" class="mono"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="hashOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="hashOut" data-i18n="copy">Copy</button></div>
   </section>
 
   <!-- crypto -->
@@ -346,7 +351,7 @@
     <div class="error" id="crErr"></div>
     <div class="hint" id="crInfo"></div>
     <textarea id="crOut" rows="4" readonly spellcheck="false" class="mono"></textarea>
-    <div class="row end"><button class="copy" type="button" data-copy="crOut" data-i18n="copy">Copy</button></div>
+    <div class="row end"><button class="copy" type="button" data-clear data-i18n="clear">Clear</button><button class="copy" type="button" data-copy="crOut" data-i18n="copy">Copy</button></div>
   </section>
 </main>
 

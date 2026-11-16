@@ -1,3 +1,3 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" fill="#EA580C" aria-label="Developer Toolbox">
-  <path fill-rule="evenodd" d="M3.5 0h9A3.5 3.5 0 0 1 16 3.5v9a3.5 3.5 0 0 1-3.5 3.5h-9A3.5 3.5 0 0 1 0 12.5v-9A3.5 3.5 0 0 1 3.5 0zM5.5 3.6a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8zM9.2 3.7h2.4a.6.6 0 0 1 .6.6v2.4a.6.6 0 0 1-.6.6H9.2a.6.6 0 0 1-.6-.6V4.3a.6.6 0 0 1 .6-.6zM5.5 8.4l2.1 3.8H3.4zM9.7 8.4h1.4v1.3h1.3v1.4h-1.3v1.3H9.7v-1.3H8.4V9.7h1.3z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" aria-label="Developer Toolbox">
+  <path fill="#EA580C" fill-rule="evenodd" d="M3.5 0h9A3.5 3.5 0 0 1 16 3.5v9a3.5 3.5 0 0 1-3.5 3.5h-9A3.5 3.5 0 0 1 0 12.5v-9A3.5 3.5 0 0 1 3.5 0zM5.5 3.6a1.9 1.9 0 1 0 0 3.8 1.9 1.9 0 0 0 0-3.8zM9.2 3.7h2.4a.6.6 0 0 1 .6.6v2.4a.6.6 0 0 1-.6.6H9.2a.6.6 0 0 1-.6-.6V4.3a.6.6 0 0 1 .6-.6zM5.5 8.4l2.1 3.8H3.4zM9.7 8.4h1.4v1.3h1.3v1.4h-1.3v1.3H9.7v-1.3H8.4V9.7h1.3z"/>
 </svg>
